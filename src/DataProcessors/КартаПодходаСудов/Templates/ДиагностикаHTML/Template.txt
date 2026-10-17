@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<style>/*@@MAPLIBRE_CSS@@*/</style>
+<style>
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; font: 12px/1.35 "Segoe UI", Arial, sans-serif; background: #eef2f5; }
+#toolbar { flex: none; padding: 6px 8px; border-bottom: 1px solid #cbd2d9; background: #fff; }
+#toolbar button { font: inherit; padding: 3px 10px; }
+#status { margin-left: 10px; color: #52606d; }
+#map { flex: 1 1 auto; min-height: 200px; height: 100%; }
+</style>
+<script>
+// Сборщик ошибок стоит первым: ошибка разбора библиотеки не должна убить код диагностики.
+window.__mapErrors = [];
+window.onerror = function (message, source, line, column) {
+    window.__mapErrors.push(String(message) + (line ? ' (строка ' + line + ':' + (column || 0) + ')' : ''));
+    return false;
+};
+</script>
+</head>
+<body>
+<div id="toolbar">
+  <button type="button" id="btn-trial">Пробный запуск MapLibre</button>
+  <span id="status">Сбор сведений...</span>
+</div>
+<div id="map"></div>
+<a id="map-event-bridge" href="#event" data-text="" style="display:none">event</a>
+<script>/*@@MAPLIBRE_JS@@*/</script>
+<script>window.__diagRegion = /*@@REGION@@*/;</script>
+<script>
+// Код диагностики намеренно на ES5: он должен выполниться и рассказать о среде даже там, где MapLibre не разберётся.
+(function () {
+    var STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
+    var TILEJSON_URL = 'https://tiles.openfreemap.org/planet';
+    var SEAMARK_URL = 'https://tiles.openseamap.org/seamark/12/3548/1503.png';
+    var TILE = { z: 12, x: 3548, y: 1503 };
+    var REQUEST_TIMEOUT_MS = 10000;
+
+    var region = window.__diagRegion || {};
+    var statusEl = document.getElementById('status');
+    var sections = { library: [], env: [], webgl: [], syntax: [], features: [], worker: [], network: [], trial: [] };
+    var pending = 0;
+
+    function add(section, line) {
+        sections[section].push(line);
+    }
+
+    function report() {
+        var order = [
+            ['library', 'Загрузка библиотеки MapLibre'],
+            ['env', 'Среда'],
+            ['webgl', 'WebGL'],
+            ['syntax', 'Синтаксис ES2020+ (справочно: нужен для MapLibre 5.x, не для 1.15)'],
+            ['features', 'API браузера'],
+            ['worker', 'Web worker из Blob URL'],
+            ['network', 'Сеть с клиента'],
+            ['trial', 'Пробный запуск MapLibre']
+        ];
+        var lines = ['Диагностика HTML-поля, ' + new Date().toLocaleString('ru-RU'), ''];
+        for (var i = 0; i < order.length; i++) {
+            var items = sections[order[i][0]];
+            if (!items.length) {
+                continue;
+            }
+            lines.push('== ' + order[i][1]);
+            for (var j = 0; j < items.length; j++) {
+                lines.push('  ' + items[j]);
+            }
+            lines.push('');
+        }
+        var text = lines.join('\n');
+        var bridge = document.getElementById('map-event-bridge');
+        bridge.setAttribute('data-text', text);
+        bridge.setAttribute('href', '#event:diagnostics');
+        if (typeof bridge.click === 'function') {
+            bridge.click();
+        } else {
+            var evt = document.createEvent('MouseEvents');
+            evt.initEvent('click', true, true);
+            bridge.dispatchEvent(evt);
+        }
+    }
+
+    function done() {
+        pending--;
+        if (pending <= 0) {
+            statusEl.textContent = 'Сведения собраны';
+            report();
+        }
+    }
+
+    // ---------- Синхронные проверки ----------
+
+    function checkLibrary() {
+        var loaded = typeof maplibregl === 'object' && maplibregl !== null;
+        add('library', 'typeof maplibregl: ' + typeof maplibregl + (loaded ? ' — загружена' : ' — НЕ загружена'));
+        if (loaded) {
+            add('library', 'Версия: ' + (typeof maplibregl.getVersion === 'function'
+                ? maplibregl.getVersion() : maplibregl.version));
+        }
+        var errors = window.__mapErrors || [];
+        add('library', 'Ошибки при разборе: ' + (errors.length ? errors.join('; ') : 'нет'));
+    }
+
+    function checkEnvironment() {
+        var mapEl = document.getElementById('map');
+        add('env', 'userAgent: ' + navigator.userAgent);
+        add('env', 'devicePixelRatio: ' + (window.devicePixelRatio || 1));
+        add('env', 'Окно: ' + window.innerWidth + '×' + window.innerHeight
+            + ', #map: ' + mapEl.clientWidth + '×' + mapEl.clientHeight);
+    }
+
+    function contextInfo(gl, prefix) {
+        var info = gl.getExtension('WEBGL_debug_renderer_info');
+        if (info) {
+            add('webgl', prefix + ' RENDERER: ' + gl.getParameter(info.UNMASKED_RENDERER_WEBGL));
+            add('webgl', prefix + ' VENDOR: ' + gl.getParameter(info.UNMASKED_VENDOR_WEBGL));
+        } else {
+            add('webgl', prefix + ' RENDERER: ' + gl.getParameter(gl.RENDERER) + ' (без WEBGL_debug_renderer_info)');
+        }
+        add('webgl', prefix + ' MAX_TEXTURE_SIZE: ' + gl.getParameter(gl.MAX_TEXTURE_SIZE));
+    }
+
+    function checkWebgl() {
+        var gl1 = null;
+        var gl2 = null;
+        try { gl1 = document.createElement('canvas').getContext('webgl'); } catch (e) { gl1 = null; }
+        try { gl2 = document.createElement('canvas').getContext('webgl2'); } catch (e) { gl2 = null; }
+        // MapLibre 1.15 достаточно WebGL1; WebGL2 нужен только для возврата на MapLibre 5.x и новее.
+        add('webgl', 'webgl: ' + (gl1 ? 'есть' : 'НЕТ — карта работать не будет'));
+        add('webgl', 'webgl2: ' + (gl2 ? 'есть' : 'нет') + (gl2 ? ' — возможен переход на MapLibre 5.x' : ''));
+        if (gl2) {
+            contextInfo(gl2, 'webgl2');
+            var strict = null;
+            try {
+                strict = document.createElement('canvas').getContext('webgl2', { failIfMajorPerformanceCaveat: true });
+            } catch (e) { strict = null; }
+            add('webgl', 'webgl2 failIfMajorPerformanceCaveat: ' + (strict
+                ? 'контекст создаётся — аппаратная отрисовка'
+                : 'контекст НЕ создаётся — вероятна программная отрисовка'));
+        }
+        if (gl1) {
+            contextInfo(gl1, 'webgl');
+            var strict1 = null;
+            try {
+                strict1 = document.createElement('canvas').getContext('webgl', { failIfMajorPerformanceCaveat: true });
+            } catch (e) { strict1 = null; }
+            add('webgl', 'webgl failIfMajorPerformanceCaveat: ' + (strict1
+                ? 'контекст создаётся — аппаратная отрисовка'
+                : 'контекст НЕ создаётся — вероятна программная отрисовка'));
+        }
+    }
+
+    function checkSyntax() {
+        var tests = [
+            ['?.', 'var a = { b: 1 }; return a?.b === 1;'],
+            ['??', 'return (null ?? 1) === 1;'],
+            ['BigInt 1n', 'return typeof 1n === "bigint";'],
+            ['class #private', 'class A { #x = 1; get x() { return this.#x; } } return new A().x === 1;']
+        ];
+        for (var i = 0; i < tests.length; i++) {
+            var result;
+            try {
+                result = new Function(tests[i][1])() ? 'да' : 'неверный результат';
+            } catch (e) {
+                result = 'НЕТ (' + e.name + ')';
+            }
+            add('syntax', tests[i][0] + ': ' + result);
+        }
+    }
+
+    function checkFeatures() {
+        var names = ['Promise', 'fetch', 'createImageBitmap', 'OffscreenCanvas', 'TextDecoder', 'ResizeObserver', 'Worker', 'Blob'];
+        for (var i = 0; i < names.length; i++) {
+            add('features', names[i] + ': ' + (typeof window[names[i]] !== 'undefined' ? 'есть' : 'НЕТ'));
+        }
+        add('features', 'URL.createObjectURL: ' + (window.URL && URL.createObjectURL ? 'есть' : 'НЕТ'));
+    }
+
+    // ---------- Асинхронные проверки ----------
+
+    function checkWorker() {
+        pending++;
+        var finished = false;
+        function finish(text) {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            add('worker', text);
+            done();
+        }
+        try {
+            var url = URL.createObjectURL(new Blob(['onmessage = function (e) { postMessage(e.data * 2); };'],
+                { type: 'application/javascript' }));
+            var worker = new Worker(url);
+            worker.onmessage = function (e) {
+                finish(e.data === 42 ? 'работает' : 'неверный ответ: ' + e.data);
+                worker.terminate();
+            };
+            worker.onerror = function (e) {
+                finish('ошибка: ' + (e.message || 'без текста'));
+            };
+            worker.postMessage(21);
+            setTimeout(function () { finish('нет ответа за 3 с'); }, 3000);
+        } catch (e) {
+            finish('НЕ создаётся: ' + e.message);
+        }
+    }
+
+    function request(label, url, responseType, onLoad) {
+        pending++;
+        var started = new Date().getTime();
+        var xhr = new XMLHttpRequest();
+        var finished = false;
+        function finish(text, response) {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            add('network', label + ': ' + text + ', ' + (new Date().getTime() - started) + ' мс');
+            if (onLoad && response !== undefined) {
+                onLoad(response);
+            }
+            done();
+        }
+        try {
+            xhr.open('GET', url, true);
+            if (responseType) {
+                xhr.responseType = responseType;
+            }
+            xhr.timeout = REQUEST_TIMEOUT_MS;
+            xhr.onload = function () {
+                var size = responseType === 'arraybuffer'
+                    ? (xhr.response ? xhr.response.byteLength : 0)
+                    : (xhr.responseText || '').length;
+                finish('HTTP ' + xhr.status + ', ' + size + ' байт', xhr.status === 200 ? xhr.response : undefined);
+            };
+            xhr.onerror = function () { finish('ошибка сети или CORS'); };
+            xhr.ontimeout = function () { finish('таймаут ' + (REQUEST_TIMEOUT_MS / 1000) + ' с'); };
+            xhr.send();
+        } catch (e) {
+            finish('исключение: ' + e.message);
+        }
+    }
+
+    function checkNetwork() {
+        request('Стиль Positron', STYLE_URL, '', null);
+        request('TileJSON OpenFreeMap', TILEJSON_URL, '', function (text) {
+            var tileUrl = null;
+            try {
+                tileUrl = JSON.parse(text).tiles[0];
+            } catch (e) {
+                add('network', 'TileJSON не разобран: ' + e.message);
+            }
+            if (tileUrl) {
+                request('Векторный тайл z12', tileUrl.replace('{z}', TILE.z).replace('{x}', TILE.x).replace('{y}', TILE.y),
+                    'arraybuffer', null);
+            }
+        });
+        request('Тайл OpenSeaMap z12', SEAMARK_URL, 'arraybuffer', null);
+    }
+
+    // ---------- Пробный запуск ----------
+
+    function measureFps(map, onDone) {
+        var frames = 0;
+        var started = new Date().getTime();
+        var running = true;
+        function frame() {
+            frames++;
+            if (running) {
+                window.requestAnimationFrame(frame);
+            }
+        }
+        window.requestAnimationFrame(frame);
+        map.panBy([400, 0], { duration: 2500 });
+        setTimeout(function () { map.panBy([-400, 0], { duration: 2500 }); }, 2500);
+        setTimeout(function () {
+            running = false;
+            var seconds = (new Date().getTime() - started) / 1000;
+            onDone(Math.round(frames / seconds));
+        }, 5000);
+    }
+
+    function startTrial() {
+        sections.trial = [];
+        if (typeof maplibregl !== 'object' || !maplibregl) {
+            add('trial', 'Библиотека не загружена — запуск невозможен');
+            report();
+            return;
+        }
+        statusEl.textContent = 'Пробная карта загружается...';
+        var started = new Date().getTime();
+        var map;
+        try {
+            map = new maplibregl.Map({
+                container: 'map',
+                style: STYLE_URL,
+                center: region.center || [131.9, 43.08],
+                zoom: region.zoom || 11,
+                attributionControl: false
+            });
+        } catch (e) {
+            add('trial', 'Карта не создаётся: ' + e.message);
+            statusEl.textContent = 'Ошибка пробного запуска';
+            report();
+            return;
+        }
+        if (typeof ResizeObserver === 'function') {
+            new ResizeObserver(function () { map.resize(); }).observe(document.getElementById('map'));
+        } else {
+            window.addEventListener('resize', function () { map.resize(); });
+        }
+        map.on('error', function (event) {
+            add('trial', 'Ошибка: ' + (event.error && event.error.message ? event.error.message : 'без текста'));
+        });
+        map.on('load', function () {
+            var canvas = map.getCanvas();
+            add('trial', 'Загрузка стиля и первых тайлов: ' + (new Date().getTime() - started) + ' мс');
+            add('trial', 'Холст: ' + canvas.width + '×' + canvas.height);
+            statusEl.textContent = 'Замер FPS при панорамировании (5 с)...';
+            measureFps(map, function (fps) {
+                add('trial', 'FPS при панорамировании: ' + fps + (fps >= 30 ? '' : ' — ниже 30'));
+                statusEl.textContent = 'Пробный запуск завершён';
+                report();
+            });
+        });
+    }
+
+    document.getElementById('btn-trial').onclick = function () {
+        this.disabled = true;
+        startTrial();
+    };
+
+    checkLibrary();
+    checkEnvironment();
+    checkWebgl();
+    checkSyntax();
+    checkFeatures();
+    pending++;
+    checkWorker();
+    checkNetwork();
+    done();
+}());
+</script>
+</body>
+</html>

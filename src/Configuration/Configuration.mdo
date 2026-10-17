@@ -41,4 +41,12 @@
     </synonym>
     <languageCode>ru</languageCode>
   </languages>
+  <subsystems>Subsystem.ПодходСудов</subsystems>
+  <roles>Role.Администратор</roles>
+  <roles>Role.Пользователь</roles>
+  <commonModules>CommonModule.ПолучениеДанныхAIS</commonModules>
+  <scheduledJobs>ScheduledJob.ПолучитьСудаAIS</scheduledJobs>
+  <constants>Constant.ТокенOpenWaters</constants>
+  <dataProcessors>DataProcessor.КартаПодходаСудов</dataProcessors>
+  <informationRegisters>InformationRegister.СнимкиAIS</informationRegisters>
 </mdclass:Configuration>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mdclass:Constant xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:core="http://g5.1c.ru/v8/dt/mcore" xmlns:mdclass="http://g5.1c.ru/v8/dt/metadata/mdclass" uuid="48fce828-9672-4863-9838-5682d337554f">
+  <producedTypes>
+    <managerType typeId="0fc7368d-9267-40be-b9a3-052993e5699a" valueTypeId="768baf69-9638-4b77-853f-1e0c83ec7d3a"/>
+    <valueManagerType typeId="d8570d6f-a311-4975-ace5-3f33ebb3628a" valueTypeId="23823bf7-dcb2-44d4-953c-557056914462"/>
+    <valueKeyType typeId="493e1196-fbf1-43db-9d4b-4a95196d16ee" valueTypeId="44b92af4-5458-4d4a-b0cd-edb45901ff92"/>
+  </producedTypes>
+  <name>ТокенOpenWaters</name>
+  <synonym>
+    <key>ru</key>
+    <value>Токен Open Waters</value>
+  </synonym>
+  <type>
+    <types>String</types>
+    <stringQualifiers>
+      <length>200</length>
+    </stringQualifiers>
+  </type>
+  <useStandardCommands>true</useStandardCommands>
+  <minValue xsi:type="core:UndefinedValue"/>
+  <maxValue xsi:type="core:UndefinedValue"/>
+  <dataLockControlMode>Managed</dataLockControlMode>
+</mdclass:Constant>

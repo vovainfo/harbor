@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<style>/*@@MAPLIBRE_CSS@@*/</style>
+<style>/*@@MAP_CSS@@*/</style>
+<script>
+// Сборщик ошибок стоит первым: ошибка разбора библиотеки убивает только её блок <script>.
+window.__mapErrors = [];
+window.onerror = function (message, source, line, column) {
+    window.__mapErrors.push(String(message) + (line ? ' (строка ' + line + ':' + (column || 0) + ')' : ''));
+    return false;
+};
+</script>
+</head>
+<body>
+<div id="map"></div>
+<div id="stale-banner" class="banner" hidden></div>
+<div id="map-message" class="banner banner-error" hidden></div>
+<div id="layer-panel" class="panel">
+  <label class="panel-row">Подложка
+    <select id="opt-basemap">
+      <option value="positron">Светлая (Positron)</option>
+      <option value="liberty">Подробная (Liberty)</option>
+    </select>
+  </label>
+  <label class="panel-row"><input type="checkbox" id="opt-seamark" checked> Морская обстановка</label>
+  <label class="panel-row"><input type="checkbox" id="opt-hulls" checked> Корпуса судов</label>
+  <label class="panel-row"><input type="checkbox" id="opt-labels" checked> Названия судов</label>
+  <label class="panel-row">Скрыть позиции старше
+    <select id="opt-age">
+      <option value="">не скрывать</option>
+      <option value="1440">24 ч</option>
+      <option value="60">1 ч</option>
+    </select>
+  </label>
+</div>
+<div id="legend" class="panel"></div>
+<a id="map-command-bridge" href="#map-command" data-ready="false" data-seq="" data-ack="" data-payload="" data-error="" style="display:none">command</a>
+<a id="map-event-bridge" href="#event" data-message="" style="display:none">event</a>
+<script>/*@@MAPLIBRE_JS@@*/</script>
+<script>window.__mapInitialData = /*@@INITIAL_DATA@@*/;</script>
+<script>/*@@MAP_JS@@*/</script>
+</body>
+</html>

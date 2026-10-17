@@ -1,0 +1,124 @@
+html, body, #map {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    position: relative;
+    overflow: hidden;
+    font: 12px/1.35 "Segoe UI", Arial, sans-serif;
+    color: #1f2933;
+    background: #dfe8ef;
+}
+
+#map {
+    width: 100%;
+}
+
+.banner {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 70%;
+    padding: 6px 12px;
+    border-radius: 4px;
+    background: #fff4ce;
+    border: 1px solid #e0b252;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    z-index: 5;
+    text-align: center;
+}
+
+.banner-error {
+    top: 44px;
+    background: #fde2e1;
+    border-color: #d9534f;
+}
+
+.banner[hidden] {
+    display: none;
+}
+
+.panel {
+    position: absolute;
+    z-index: 4;
+    background: rgba(255, 255, 255, 0.94);
+    border-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    padding: 6px 8px;
+}
+
+#layer-panel {
+    top: 10px;
+    right: 10px;
+}
+
+.panel-row {
+    display: block;
+    margin: 3px 0;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.panel-row select {
+    margin-left: 4px;
+    font: inherit;
+}
+
+/* Под кнопками масштаба: внизу строка атрибуции на всю ширину. */
+#legend {
+    left: 10px;
+    top: 110px;
+    max-width: 220px;
+}
+
+.legend-title {
+    font-weight: 600;
+    margin: 2px 0 4px;
+}
+
+.legend-row {
+    display: flex;
+    align-items: center;
+    margin: 2px 0;
+}
+
+.legend-row canvas,
+.legend-swatch {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    flex: none;
+}
+
+.legend-swatch {
+    border-radius: 50%;
+    background: #2e7d32;
+}
+
+.vessel-popup {
+    min-width: 220px;
+}
+
+.vessel-popup-title {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 4px;
+}
+
+.vessel-popup-row {
+    display: flex;
+    gap: 8px;
+    margin: 1px 0;
+}
+
+.vessel-popup-label {
+    color: #616e7c;
+    flex: 0 0 96px;
+}
+
+.vessel-popup-value {
+    flex: 1 1 auto;
+    word-break: break-word;
+}
