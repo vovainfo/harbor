@@ -7,5 +7,7 @@
   </synonym>
   <includeHelpInContents>true</includeHelpInContents>
   <includeInCommandInterface>true</includeInCommandInterface>
-  <content>DataProcessor.КартаПодходаСудов</content>
+  <content>DataProcessor.КартаПодходаСудовV1</content>
+  <content>DataProcessor.КартаПодходаСудовV2</content>
+  <content>Catalog.ОтслеживаемыеСудаV2</content>
 </mdclass:Subsystem>

@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<style>/*@@MAPLIBRE_CSS@@*/</style>
+<style>
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; font: 12px/1.35 "Segoe UI", Arial, sans-serif; background: #eef2f5; }
+#toolbar { flex: none; padding: 6px 8px; border-bottom: 1px solid #cbd2d9; background: #fff; }
+#toolbar button { font: inherit; padding: 3px 10px; }
+#status { margin-left: 10px; color: #52606d; }
+#map { flex: 1 1 auto; min-height: 200px; height: 100%; }
+</style>
+<script>
+// Сборщик ошибок стоит первым: ошибка разбора библиотеки не должна убить код диагностики.
+window.__mapErrors = [];
+window.onerror = function (message, source, line, column) {
+    window.__mapErrors.push(String(message) + (line ? ' (строка ' + line + ':' + (column || 0) + ')' : ''));
+    return false;
+};
+</script>
+</head>
+<body>
+<div id="toolbar">
+  <button type="button" id="btn-trial">Пробный запуск MapLibre (сеть)</button>
+  <span id="status">Сбор сведений...</span>
+</div>
+<div id="map"></div>
+<a id="map-command-bridge" href="#map-command" data-ready="false" data-seq="" data-ack="" data-payload="" data-error="" data-result="" style="display:none">command</a>
+<a id="map-event-bridge" href="#event" data-text="" style="display:none">event</a>
+<script>/*@@MAPLIBRE_JS@@*/</script>
+<script>/*@@CACHE_JS@@*/</script>
+<script>window.__diagRegion = /*@@REGION@@*/;</script>
+<script>
+// Код диагностики намеренно на ES5: он должен выполниться и рассказать о среде даже там, где MapLibre не разберётся.
+(function () {
+    var STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
+    var TILEJSON_URL = 'https://tiles.openfreemap.org/planet';
+    var SEAMARK_URL = 'https://tiles.openseamap.org/seamark/12/3548/1503.png';
+    var TILE = { z: 12, x: 3548, y: 1503 };
+    var REQUEST_TIMEOUT_MS = 10000;
+
+    var region = window.__diagRegion || {};
+    var statusEl = document.getElementById('status');
+    var BASE64_TEST_BYTES = 7864320;
+    var STORAGE_KEY = 'harbor.diagnostics.marker';
+    var sections = {
+        library: [], env: [], webgl: [], syntax: [], features: [], worker: [], base64: [], storage: [],
+        network: [], trial: [], cache: [], protocol: []
+    };
+    var trialMap = null;
+    var pending = 0;
+
+    function add(section, line) {
+        sections[section].push(line);
+    }
+
+    function report() {
+        var order = [
+            ['library', 'Загрузка библиотеки MapLibre'],
+            ['env', 'Среда'],
+            ['webgl', 'WebGL'],
+            ['syntax', 'Синтаксис ES2020+ (справочно: нужен для MapLibre 5.x, не для 1.15)'],
+            ['features', 'API браузера'],
+            ['worker', 'Web worker из Blob URL'],
+            ['base64', 'base64 (atob) большими строками'],
+            ['storage', 'Хранилище страницы между открытиями'],
+            ['network', 'Сеть из HTML-поля (справочно: карте V2 не нужна)'],
+            ['trial', 'Пробный запуск MapLibre из сети'],
+            ['cache', 'Тестовый набор, принятый через мост'],
+            ['protocol', 'Пробная карта из кеша через harbor:// (без сети)']
+        ];
+        var lines = ['Диагностика HTML-поля (V2), ' + new Date().toLocaleString('ru-RU'), ''];
+        for (var i = 0; i < order.length; i++) {
+            var items = sections[order[i][0]];
+            if (!items.length) {
+                continue;
+            }
+            lines.push('== ' + order[i][1]);
+            for (var j = 0; j < items.length; j++) {
+                lines.push('  ' + items[j]);
+            }
+            lines.push('');
+        }
+        var text = lines.join('\n');
+        var bridge = document.getElementById('map-event-bridge');
+        bridge.setAttribute('data-text', text);
+        bridge.setAttribute('href', '#event:diagnostics');
+        if (typeof bridge.click === 'function') {
+            bridge.click();
+        } else {
+            var evt = document.createEvent('MouseEvents');
+            evt.initEvent('click', true, true);
+            bridge.dispatchEvent(evt);
+        }
+    }
+
+    function done() {
+        pending--;
+        if (pending <= 0) {
+            statusEl.textContent = 'Сведения собраны';
+            report();
+        }
+    }
+
+    // ---------- Синхронные проверки ----------
+
+    function checkLibrary() {
+        var loaded = typeof maplibregl === 'object' && maplibregl !== null;
+        add('library', 'typeof maplibregl: ' + typeof maplibregl + (loaded ? ' — загружена' : ' — НЕ загружена'));
+        if (loaded) {
+            add('library', 'Версия: ' + (typeof maplibregl.getVersion === 'function'
+                ? maplibregl.getVersion() : maplibregl.version));
+        }
+        var errors = window.__mapErrors || [];
+        add('library', 'Ошибки при разборе: ' + (errors.length ? errors.join('; ') : 'нет'));
+    }
+
+    function checkEnvironment() {
+        var mapEl = document.getElementById('map');
+        add('env', 'userAgent: ' + navigator.userAgent);
+        add('env', 'devicePixelRatio: ' + (window.devicePixelRatio || 1));
+        add('env', 'Окно: ' + window.innerWidth + '×' + window.innerHeight
+            + ', #map: ' + mapEl.clientWidth + '×' + mapEl.clientHeight);
+    }
+
+    function contextInfo(gl, prefix) {
+        var info = gl.getExtension('WEBGL_debug_renderer_info');
+        if (info) {
+            add('webgl', prefix + ' RENDERER: ' + gl.getParameter(info.UNMASKED_RENDERER_WEBGL));
+            add('webgl', prefix + ' VENDOR: ' + gl.getParameter(info.UNMASKED_VENDOR_WEBGL));
+        } else {
+            add('webgl', prefix + ' RENDERER: ' + gl.getParameter(gl.RENDERER) + ' (без WEBGL_debug_renderer_info)');
+        }
+        add('webgl', prefix + ' MAX_TEXTURE_SIZE: ' + gl.getParameter(gl.MAX_TEXTURE_SIZE));
+    }
+
+    function checkWebgl() {
+        var gl1 = null;
+        var gl2 = null;
+        try { gl1 = document.createElement('canvas').getContext('webgl'); } catch (e) { gl1 = null; }
+        try { gl2 = document.createElement('canvas').getContext('webgl2'); } catch (e) { gl2 = null; }
+        // MapLibre 1.15 достаточно WebGL1; WebGL2 нужен только для возврата на MapLibre 5.x и новее.
+        add('webgl', 'webgl: ' + (gl1 ? 'есть' : 'НЕТ — карта работать не будет'));
+        add('webgl', 'webgl2: ' + (gl2 ? 'есть' : 'нет') + (gl2 ? ' — возможен переход на MapLibre 5.x' : ''));
+        if (gl2) {
+            contextInfo(gl2, 'webgl2');
+            var strict = null;
+            try {
+                strict = document.createElement('canvas').getContext('webgl2', { failIfMajorPerformanceCaveat: true });
+            } catch (e) { strict = null; }
+            add('webgl', 'webgl2 failIfMajorPerformanceCaveat: ' + (strict
+                ? 'контекст создаётся — аппаратная отрисовка'
+                : 'контекст НЕ создаётся — вероятна программная отрисовка'));
+        }
+        if (gl1) {
+            contextInfo(gl1, 'webgl');
+            var strict1 = null;
+            try {
+                strict1 = document.createElement('canvas').getContext('webgl', { failIfMajorPerformanceCaveat: true });
+            } catch (e) { strict1 = null; }
+            add('webgl', 'webgl failIfMajorPerformanceCaveat: ' + (strict1
+                ? 'контекст создаётся — аппаратная отрисовка'
+                : 'контекст НЕ создаётся — вероятна программная отрисовка'));
+        }
+    }
+
+    function checkSyntax() {
+        var tests = [
+            ['?.', 'var a = { b: 1 }; return a?.b === 1;'],
+            ['??', 'return (null ?? 1) === 1;'],
+            ['BigInt 1n', 'return typeof 1n === "bigint";'],
+            ['class #private', 'class A { #x = 1; get x() { return this.#x; } } return new A().x === 1;']
+        ];
+        for (var i = 0; i < tests.length; i++) {
+            var result;
+            try {
+                result = new Function(tests[i][1])() ? 'да' : 'неверный результат';
+            } catch (e) {
+                result = 'НЕТ (' + e.name + ')';
+            }
+            add('syntax', tests[i][0] + ': ' + result);
+        }
+    }
+
+    // Геттеры localStorage и indexedDB в WebKit бросают SecurityError, если хранилище запрещено
+    // для источника документа: даже typeof по ним — исключение.
+    function presence(name) {
+        try {
+            return typeof window[name] !== 'undefined' ? 'есть' : 'НЕТ';
+        } catch (e) {
+            return 'доступ запрещён (' + (e.name || e.message) + ')';
+        }
+    }
+
+    // Сбой одной проверки не должен оборвать остальные и отчёт: иначе форма ждёт его бесконечно.
+    function safely(section, check) {
+        try {
+            check();
+        } catch (e) {
+            add(section, 'проверка прервана: ' + (e && e.message ? e.message : String(e)));
+        }
+    }
+
+    function checkFeatures() {
+        var names = ['Promise', 'fetch', 'createImageBitmap', 'OffscreenCanvas', 'TextDecoder', 'ResizeObserver', 'Worker', 'Blob',
+            'atob', 'btoa', 'indexedDB', 'localStorage'];
+        for (var i = 0; i < names.length; i++) {
+            add('features', names[i] + ': ' + presence(names[i]));
+        }
+        add('features', 'URL.createObjectURL: ' + (window.URL && URL.createObjectURL ? 'есть' : 'НЕТ'));
+    }
+
+    function elapsedSince(started) {
+        return (new Date().getTime() - started) + ' мс';
+    }
+
+    // Пакеты набора — base64 общим объёмом 15–25 МБ: замер atob и перевода в ArrayBuffer на 10 МБ строки.
+    function checkBase64() {
+        if (typeof atob !== 'function' || typeof btoa !== 'function' || typeof harborCache !== 'object') {
+            add('base64', 'atob/btoa или общий код кеша недоступны');
+            return;
+        }
+        try {
+            var chunk = new Uint8Array(0x8000);
+            for (var i = 0; i < chunk.length; i++) {
+                chunk[i] = (i * 31 + 7) & 255;
+            }
+            var piece = String.fromCharCode.apply(null, chunk);
+            var parts = [];
+            for (var size = 0; size < BASE64_TEST_BYTES; size += chunk.length) {
+                parts.push(piece);
+            }
+            var encoded = btoa(parts.join(''));
+            var started = new Date().getTime();
+            var buffer = harborCache.base64ToBuffer(encoded);
+            add('base64', 'Строка ' + (encoded.length / 1048576).toFixed(1) + ' МБ → ArrayBuffer '
+                + (buffer.byteLength / 1048576).toFixed(1) + ' МБ: ' + elapsedSince(started));
+        } catch (e) {
+            add('base64', 'ошибка: ' + e.message);
+        }
+    }
+
+    // Маркер прошлого открытия: если он есть в новом сеансе 1С, хранилище переживает перезапуск клиента
+    // и набор можно хранить между открытиями формы карты (план этапа 2, п. 9.6).
+    function checkLocalStorage() {
+        try {
+            var previous = window.localStorage.getItem(STORAGE_KEY);
+            window.localStorage.setItem(STORAGE_KEY, new Date().toISOString());
+            add('storage', 'localStorage: есть; маркер прошлого открытия: ' + (previous || 'нет'));
+        } catch (e) {
+            add('storage', 'localStorage: НЕТ (' + e.message + ')');
+        }
+    }
+
+    function checkIndexedDb() {
+        var factory;
+        try {
+            factory = window.indexedDB;
+        } catch (e) {
+            add('storage', 'IndexedDB: доступ запрещён (' + (e.name || e.message) + ')');
+            return;
+        }
+        if (!factory) {
+            add('storage', 'IndexedDB: НЕТ');
+            return;
+        }
+        pending++;
+        var finished = false;
+        function finish(text) {
+            if (!finished) {
+                finished = true;
+                add('storage', 'IndexedDB: ' + text);
+                done();
+            }
+        }
+        try {
+            var opening = indexedDB.open('harbor-diagnostics', 1);
+            opening.onupgradeneeded = function () {
+                opening.result.createObjectStore('markers');
+            };
+            opening.onerror = function () {
+                finish('не открывается (' + (opening.error && opening.error.message) + ')');
+            };
+            opening.onsuccess = function () {
+                var db = opening.result;
+                var store = db.transaction('markers', 'readwrite').objectStore('markers');
+                var reading = store.get('marker');
+                reading.onsuccess = function () {
+                    store.put(new Date().toISOString(), 'marker');
+                    finish('есть; маркер прошлого открытия: ' + (reading.result || 'нет'));
+                };
+                reading.onerror = function () {
+                    finish('чтение не удалось');
+                };
+            };
+            setTimeout(function () { finish('нет ответа за 3 с'); }, 3000);
+        } catch (e) {
+            finish('ошибка: ' + e.message);
+        }
+    }
+
+    // ---------- Асинхронные проверки ----------
+
+    function checkWorker() {
+        pending++;
+        var finished = false;
+        function finish(text) {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            add('worker', text);
+            done();
+        }
+        try {
+            var url = URL.createObjectURL(new Blob(['onmessage = function (e) { postMessage(e.data * 2); };'],
+                { type: 'application/javascript' }));
+            var worker = new Worker(url);
+            worker.onmessage = function (e) {
+                finish(e.data === 42 ? 'работает' : 'неверный ответ: ' + e.data);
+                worker.terminate();
+            };
+            worker.onerror = function (e) {
+                finish('ошибка: ' + (e.message || 'без текста'));
+            };
+            worker.postMessage(21);
+            setTimeout(function () { finish('нет ответа за 3 с'); }, 3000);
+        } catch (e) {
+            finish('НЕ создаётся: ' + e.message);
+        }
+    }
+
+    function request(label, url, responseType, onLoad) {
+        pending++;
+        var started = new Date().getTime();
+        var xhr = new XMLHttpRequest();
+        var finished = false;
+        function finish(text, response) {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            add('network', label + ': ' + text + ', ' + (new Date().getTime() - started) + ' мс');
+            if (onLoad && response !== undefined) {
+                onLoad(response);
+            }
+            done();
+        }
+        try {
+            xhr.open('GET', url, true);
+            if (responseType) {
+                xhr.responseType = responseType;
+            }
+            xhr.timeout = REQUEST_TIMEOUT_MS;
+            xhr.onload = function () {
+                var size = responseType === 'arraybuffer'
+                    ? (xhr.response ? xhr.response.byteLength : 0)
+                    : (xhr.responseText || '').length;
+                finish('HTTP ' + xhr.status + ', ' + size + ' байт', xhr.status === 200 ? xhr.response : undefined);
+            };
+            xhr.onerror = function () { finish('ошибка сети или CORS'); };
+            xhr.ontimeout = function () { finish('таймаут ' + (REQUEST_TIMEOUT_MS / 1000) + ' с'); };
+            xhr.send();
+        } catch (e) {
+            finish('исключение: ' + e.message);
+        }
+    }
+
+    function checkNetwork() {
+        request('Стиль Positron', STYLE_URL, '', null);
+        request('TileJSON OpenFreeMap', TILEJSON_URL, '', function (text) {
+            var tileUrl = null;
+            try {
+                tileUrl = JSON.parse(text).tiles[0];
+            } catch (e) {
+                add('network', 'TileJSON не разобран: ' + e.message);
+            }
+            if (tileUrl) {
+                request('Векторный тайл z12', tileUrl.replace('{z}', TILE.z).replace('{x}', TILE.x).replace('{y}', TILE.y),
+                    'arraybuffer', null);
+            }
+        });
+        request('Тайл OpenSeaMap z12', SEAMARK_URL, 'arraybuffer', null);
+    }
+
+    // ---------- Пробный запуск ----------
+
+    function measureFps(map, onDone) {
+        var frames = 0;
+        var started = new Date().getTime();
+        var running = true;
+        function frame() {
+            frames++;
+            if (running) {
+                window.requestAnimationFrame(frame);
+            }
+        }
+        window.requestAnimationFrame(frame);
+        map.panBy([400, 0], { duration: 2500 });
+        setTimeout(function () { map.panBy([-400, 0], { duration: 2500 }); }, 2500);
+        setTimeout(function () {
+            running = false;
+            var seconds = (new Date().getTime() - started) / 1000;
+            onDone(Math.round(frames / seconds));
+        }, 5000);
+    }
+
+    function startTrial() {
+        sections.trial = [];
+        if (typeof maplibregl !== 'object' || !maplibregl) {
+            add('trial', 'Библиотека не загружена — запуск невозможен');
+            report();
+            return;
+        }
+        statusEl.textContent = 'Пробная карта загружается...';
+        var started = new Date().getTime();
+        var map;
+        removeTrialMap();
+        try {
+            map = trialMap = new maplibregl.Map({
+                container: 'map',
+                style: STYLE_URL,
+                center: region.center || [131.9, 43.08],
+                zoom: region.zoom || 11,
+                attributionControl: false
+            });
+        } catch (e) {
+            add('trial', 'Карта не создаётся: ' + e.message);
+            statusEl.textContent = 'Ошибка пробного запуска';
+            report();
+            return;
+        }
+        if (typeof ResizeObserver === 'function') {
+            new ResizeObserver(function () { map.resize(); }).observe(document.getElementById('map'));
+        } else {
+            window.addEventListener('resize', function () { map.resize(); });
+        }
+        map.on('error', function (event) {
+            add('trial', 'Ошибка: ' + (event.error && event.error.message ? event.error.message : 'без текста'));
+        });
+        map.on('load', function () {
+            var canvas = map.getCanvas();
+            add('trial', 'Загрузка стиля и первых тайлов: ' + (new Date().getTime() - started) + ' мс');
+            add('trial', 'Холст: ' + canvas.width + '×' + canvas.height);
+            statusEl.textContent = 'Замер FPS при панорамировании (5 с)...';
+            measureFps(map, function (fps) {
+                add('trial', 'FPS при панорамировании: ' + fps + (fps >= 30 ? '' : ' — ниже 30'));
+                statusEl.textContent = 'Пробный запуск завершён';
+                report();
+            });
+        });
+    }
+
+    function removeTrialMap() {
+        if (trialMap) {
+            trialMap.remove();
+            trialMap = null;
+        }
+    }
+
+    // ---------- Команды формы: мост, тестовый набор, карта из кеша ----------
+
+    var commandBridge = document.getElementById('map-command-bridge');
+    var packageBreaks = 0;
+
+    function acceptPackage(cachePackage) {
+        (cachePackage.items || []).forEach(function (item) {
+            if (/[\r\n]/.test(item.b)) {
+                packageBreaks++;
+            }
+        });
+        var started = new Date().getTime();
+        harborCache.addPackage(cachePackage);
+        sections.cache = [
+            'Пакетов: ' + harborCache.packageCount() + ', ресурсов в кеше: ' + harborCache.keyCount()
+                + ', раскладка последнего пакета: ' + elapsedSince(started),
+            'Переводы строк в base64: ' + (packageBreaks ? 'ЕСТЬ в ' + packageBreaks + ' ресурсах' : 'нет')
+        ];
+        return String(harborCache.keyCount());
+    }
+
+    // Карта целиком из кеша: стиль, TileJSON, тайлы, шрифты и спрайт идут через обработчик harbor://.
+    function startProtocolMap(command) {
+        sections.protocol = [];
+        removeTrialMap();
+        harborCache.register({ minZoom: command.minZoom, bbox: command.bbox });
+        var style = harborCache.style('positron');
+        if (!style) {
+            add('protocol', 'В тестовом наборе нет стиля Positron');
+            report();
+            return;
+        }
+        var started = new Date().getTime();
+        statusEl.textContent = 'Пробная карта из кеша загружается...';
+        trialMap = new maplibregl.Map({
+            container: 'map',
+            style: style,
+            center: [(command.bbox[0] + command.bbox[2]) / 2, (command.bbox[1] + command.bbox[3]) / 2],
+            zoom: command.minZoom,
+            attributionControl: false
+        });
+        trialMap.on('error', function (event) {
+            add('protocol', 'Ошибка: ' + (event.error && event.error.message ? event.error.message : 'без текста'));
+        });
+        trialMap.on('load', function () {
+            // Подписи грузятся после load: даём шрифтам дойти, затем снимаем статистику обработчика.
+            setTimeout(function () {
+                var stats = harborCache.stats();
+                add('protocol', 'Стиль и первые тайлы: ' + elapsedSince(started));
+                add('protocol', 'Запросов к harbor://: ' + stats.requests + ', не найдено в кеше: ' + stats.misses.length
+                    + (stats.misses.length ? ' (' + stats.misses.slice(0, 10).join(', ') + ')' : ''));
+                statusEl.textContent = 'Пробная карта из кеша готова';
+                report();
+            }, 2000);
+        });
+    }
+
+    function applyCommand(command) {
+        var op = command && command.op;
+        if (op === 'echo') {
+            return String((command.text || '').length);
+        }
+        if (op === 'addCachePackage') {
+            return acceptPackage(command.package);
+        }
+        if (op === 'protocolMap') {
+            startProtocolMap(command);
+            return '';
+        }
+        throw new Error('Неизвестная команда диагностики: ' + op);
+    }
+
+    function processBridgeCommand(event) {
+        if (event && event.preventDefault) {
+            event.preventDefault();
+        }
+        var sequence = commandBridge.getAttribute('data-seq') || '';
+        if (!sequence || sequence === processBridgeCommand.lastSequence) {
+            return false;
+        }
+        processBridgeCommand.lastSequence = sequence;
+        var payload = commandBridge.getAttribute('data-payload') || '';
+        commandBridge.setAttribute('data-payload', '');
+        try {
+            var result = applyCommand(JSON.parse(payload));
+            commandBridge.setAttribute('data-result', result == null ? '' : String(result));
+            commandBridge.setAttribute('data-error', '');
+        } catch (e) {
+            commandBridge.setAttribute('data-error', e.message || String(e));
+        }
+        commandBridge.setAttribute('data-ack', sequence);
+        return false;
+    }
+    processBridgeCommand.lastSequence = '';
+
+    document.getElementById('btn-trial').onclick = function () {
+        this.disabled = true;
+        startTrial();
+    };
+
+    safely('library', checkLibrary);
+    safely('env', checkEnvironment);
+    safely('webgl', checkWebgl);
+    safely('syntax', checkSyntax);
+    safely('features', checkFeatures);
+    safely('base64', checkBase64);
+    safely('storage', checkLocalStorage);
+    pending++;
+    safely('storage', checkIndexedDb);
+    safely('worker', checkWorker);
+    safely('network', checkNetwork);
+    // Мост команд нужен форме только при загруженной библиотеке: без неё проверять кеш и протокол нечем.
+    if (typeof maplibregl === 'object' && maplibregl && typeof harborCache === 'object') {
+        commandBridge.addEventListener('click', processBridgeCommand, false);
+        commandBridge.setAttribute('data-ready', 'true');
+    }
+    // Первый отчёт — после load: событие поля во время разбора страницы 1С может не получить.
+    if (document.readyState === 'complete') {
+        setTimeout(done, 0);
+    } else {
+        window.addEventListener('load', function () { setTimeout(done, 0); });
+    }
+}());
+</script>
+</body>
+</html>

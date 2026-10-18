@@ -1,0 +1,159 @@
+// Кеш набора картографии и протокол harbor:// — общий код страницы карты и диагностики.
+// Ключ ресурса — адрес, который запросит MapLibre 1.15.3, без harbor:// (план этапа 2, п. 7.1).
+(function () {
+    'use strict';
+
+    var PROTOCOL = 'harbor';
+    var PREFIX = PROTOCOL + '://';
+    var VECTOR_SOURCE = 'openmaptiles';
+
+    var buffers = {};
+    var packages = {};
+    var packageCount = 0;
+    var region = null;
+    // Для диагностики: сколько запросов обслужено и каких ключей не нашлось.
+    var stats = { requests: 0, misses: [] };
+
+    function base64ToBuffer(text) {
+        var binary = atob(text);
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
+    }
+
+    function bufferToText(buffer) {
+        var bytes = new Uint8Array(buffer);
+        if (typeof TextDecoder === 'function') {
+            return new TextDecoder('utf-8').decode(bytes);
+        }
+        var binary = '';
+        for (var i = 0; i < bytes.length; i += 0x8000) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        }
+        return decodeURIComponent(escape(binary));
+    }
+
+    function json(key) {
+        var buffer = buffers[key];
+        return buffer ? JSON.parse(bufferToText(buffer)) : null;
+    }
+
+    // Повтор пакета (обрыв вызова на стороне 1С) не раскладывается и не считается дважды.
+    function addPackage(cachePackage) {
+        if (packages[cachePackage.n]) {
+            return false;
+        }
+        (cachePackage.items || []).forEach(function (item) {
+            buffers[item.k] = base64ToBuffer(item.b);
+        });
+        packages[cachePackage.n] = true;
+        packageCount++;
+        return true;
+    }
+
+    function lastSegment(url) {
+        return String(url).split('?')[0].split('/').pop();
+    }
+
+    // Тайлы и диапазоны шрифтов на кромке окна могут выходить за набор: пустой ответ — это тайл без объектов
+    // или диапазон без глифов. Ошибка без sourceId сбросила бы стиль карты на запасной.
+    function isOptionalKey(key) {
+        return key.indexOf('tiles/') === 0 || key.indexOf('glyphs/') === 0;
+    }
+
+    // bounds и minzoom отсекают тайлы вне набора до запроса: при minzoom 0 тайл в ошибке
+    // заставил бы библиотеку запрашивать родителей до z1. maxzoom 14 не трогаем — выше библиотека растягивает z14.
+    function tileJson() {
+        var tilejson = json('tilejson');
+        if (tilejson) {
+            tilejson.tiles = [PREFIX + 'tiles/{z}/{x}/{y}'];
+            tilejson.minzoom = region.minZoom;
+            tilejson.bounds = region.bbox;
+        }
+        return tilejson;
+    }
+
+    function respond(params, callback) {
+        var key = params.url.substring(PREFIX.length);
+        stats.requests++;
+        if (key === 'tilejson') {
+            var tilejson = tileJson();
+            return tilejson ? callback(null, tilejson) : callback(new Error('нет в кеше: ' + key));
+        }
+        var buffer = buffers[key];
+        if (!buffer) {
+            if (stats.misses.length < 50) {
+                stats.misses.push(key);
+            }
+            return isOptionalKey(key) ? callback(null, new ArrayBuffer(0)) : callback(new Error('нет в кеше: ' + key));
+        }
+        if (params.type === 'json') {
+            return callback(null, JSON.parse(bufferToText(buffer)));
+        }
+        // Копия: буфер библиотека передаёт в worker, а словарь должен остаться целым.
+        return callback(null, buffer.slice(0));
+    }
+
+    // Ответ асинхронный, как у сетевого запроса; в сеть обработчик не ходит.
+    // {cancel} обязателен: abortTile и смена стиля вызывают cancel у результата.
+    function load(params, callback) {
+        var cancelled = false;
+        setTimeout(function () {
+            if (cancelled) {
+                return;
+            }
+            try {
+                respond(params, callback);
+            } catch (error) {
+                callback(error);
+            }
+        }, 0);
+        return { cancel: function () { cancelled = true; } };
+    }
+
+    // Стиль из кеша с адресами harbor://. Все источники, кроме векторного, удаляются вместе со слоями
+    // (ne2_shaded — растр Natural Earth с адресом в tiles): иначе на малом зуме карта пошла бы в интернет.
+    function style(name) {
+        var result = json('style/' + name);
+        if (!result) {
+            return null;
+        }
+        var removed = {};
+        Object.keys(result.sources || {}).forEach(function (id) {
+            if (id === VECTOR_SOURCE) {
+                result.sources[id] = { type: 'vector', url: PREFIX + 'tilejson' };
+            } else {
+                removed[id] = true;
+                delete result.sources[id];
+            }
+        });
+        result.layers = (result.layers || []).filter(function (layer) {
+            return !layer.source || !removed[layer.source];
+        });
+        if (result.glyphs) {
+            result.glyphs = PREFIX + 'glyphs/{fontstack}/{range}.pbf';
+        }
+        if (result.sprite) {
+            result.sprite = PREFIX + 'sprite/' + lastSegment(result.sprite);
+        }
+        return result;
+    }
+
+    window.harborCache = {
+        // Регистрирует протокол; вызывать после проверки typeof maplibregl.
+        // region — параметры района: minZoom и bbox для TileJSON.
+        register: function (regionParameters) {
+            region = regionParameters;
+            maplibregl.addProtocol(PROTOCOL, load);
+        },
+        addPackage: addPackage,
+        packageCount: function () { return packageCount; },
+        keyCount: function () { return Object.keys(buffers).length; },
+        json: json,
+        style: style,
+        base64ToBuffer: base64ToBuffer,
+        stats: function () { return stats; }
+    };
+}());

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mdclass:InformationRegister xmlns:mdclass="http://g5.1c.ru/v8/dt/metadata/mdclass" uuid="6a8e6b5b-d357-47d6-b09b-3b20a89f090f">
+  <producedTypes>
+    <selectionType typeId="c4ceec7c-7bae-4c42-ba91-091c2a8681ce" valueTypeId="a77b44ef-3a15-435d-9971-db0c1d576ec5"/>
+    <listType typeId="f3c58aac-4ecc-4d3b-a22a-461ee1674e04" valueTypeId="3fd61d7a-cf92-43a4-9c26-c9ec289cb755"/>
+    <managerType typeId="7d7ec319-dba9-4989-8ba2-be48e2affa22" valueTypeId="9eeedbfc-ec73-4a4f-be8f-5f52a1bfb097"/>
+    <recordSetType typeId="d48b97b0-8071-454b-944f-40cbcd3ab887" valueTypeId="d7d859cc-d930-4021-ad76-5885df03fb2d"/>
+    <recordKeyType typeId="166d6dff-aaed-403e-859b-15a2aa1b1e52" valueTypeId="cd9027c8-db97-4943-a7d9-7af416c5a333"/>
+    <recordType typeId="8fc108a9-5e3e-4bb3-98c9-e08cc126109d" valueTypeId="ab60c92a-bb34-4d2a-a029-6f25ff3a50a3"/>
+    <recordManagerType typeId="ab049755-3b50-496f-af18-85793f085a1a" valueTypeId="0960f9f8-bbfc-4a64-823f-5b47bfe4408f"/>
+  </producedTypes>
+  <name>ПакетыКартыV2</name>
+  <synonym>
+    <key>ru</key>
+    <value>Пакеты картографических данных (V2)</value>
+  </synonym>
+  <useStandardCommands>true</useStandardCommands>
+  <editType>InDialog</editType>
+  <dataLockControlMode>Managed</dataLockControlMode>
+  <listPresentation>
+    <key>ru</key>
+    <value>Пакеты картографических данных (V2)</value>
+  </listPresentation>
+  <resources uuid="681751f9-b1e4-4360-a5f3-d0a78dd941c5">
+    <name>ДанныеJSON</name>
+    <synonym>
+      <key>ru</key>
+      <value>Данные JSON</value>
+    </synonym>
+    <type>
+      <types>String</types>
+      <stringQualifiers/>
+    </type>
+  </resources>
+  <resources uuid="1b9edd19-3250-4d2d-8d27-b91e1ffc1aea">
+    <name>КоличествоРесурсов</name>
+    <synonym>
+      <key>ru</key>
+      <value>Количество ресурсов</value>
+    </synonym>
+    <type>
+      <types>Number</types>
+      <numberQualifiers>
+        <precision>10</precision>
+        <nonNegative>true</nonNegative>
+      </numberQualifiers>
+    </type>
+  </resources>
+  <resources uuid="2db42d38-e967-4e85-a87a-bee7f7b4ff4a">
+    <name>Размер</name>
+    <synonym>
+      <key>ru</key>
+      <value>Размер (символов)</value>
+    </synonym>
+    <type>
+      <types>Number</types>
+      <numberQualifiers>
+        <precision>12</precision>
+        <nonNegative>true</nonNegative>
+      </numberQualifiers>
+    </type>
+  </resources>
+  <dimensions uuid="4f4ef9c8-2351-4d3e-a9da-d8cc53c5cbd8">
+    <name>Набор</name>
+    <synonym>
+      <key>ru</key>
+      <value>Набор</value>
+    </synonym>
+    <type>
+      <types>UUID</types>
+    </type>
+  </dimensions>
+  <dimensions uuid="d0acdc06-ed34-45a9-a2e0-80cae7a9ac81">
+    <name>Номер</name>
+    <synonym>
+      <key>ru</key>
+      <value>Номер</value>
+    </synonym>
+    <type>
+      <types>Number</types>
+      <numberQualifiers>
+        <precision>6</precision>
+        <nonNegative>true</nonNegative>
+      </numberQualifiers>
+    </type>
+  </dimensions>
+</mdclass:InformationRegister>

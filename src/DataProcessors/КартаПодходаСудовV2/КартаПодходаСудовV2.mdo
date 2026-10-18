@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mdclass:DataProcessor xmlns:mdclass="http://g5.1c.ru/v8/dt/metadata/mdclass" uuid="0432f84f-2883-4c8c-b560-aabe66ab2739">
+  <producedTypes>
+    <objectType typeId="40253b01-264a-4b2e-86d1-2e6bc8e4c471" valueTypeId="993a3105-4c0c-464d-ab26-df13437b7972"/>
+    <managerType typeId="e0104588-1c6c-4101-b96f-9932041285da" valueTypeId="4698178f-14e9-4cd4-aebe-f8e9fed3739f"/>
+  </producedTypes>
+  <name>КартаПодходаСудовV2</name>
+  <synonym>
+    <key>ru</key>
+    <value>Карта подхода судов</value>
+  </synonym>
+  <useStandardCommands>true</useStandardCommands>
+  <defaultForm>DataProcessor.КартаПодходаСудовV2.Form.Форма</defaultForm>
+  <forms uuid="0aa1070b-b767-40dc-96e8-c13a03780525">
+    <name>Форма</name>
+    <synonym>
+      <key>ru</key>
+      <value>Карта подхода судов</value>
+    </synonym>
+  </forms>
+  <forms uuid="820d3d6a-5315-4d53-bdde-aac95aa737a5">
+    <name>КарточкаСудна</name>
+    <synonym>
+      <key>ru</key>
+      <value>Карточка судна</value>
+    </synonym>
+  </forms>
+  <forms uuid="54b2959c-ebd8-436f-98c3-29631ad57151">
+    <name>ЗагрузкаКарты</name>
+    <synonym>
+      <key>ru</key>
+      <value>Загрузка картографических данных</value>
+    </synonym>
+  </forms>
+  <forms uuid="bb5b141e-332e-4072-88fe-d6deb73b568d">
+    <name>Диагностика</name>
+    <synonym>
+      <key>ru</key>
+      <value>Диагностика HTML-поля (V2)</value>
+    </synonym>
+  </forms>
+  <templates uuid="2460b9a0-5892-42fd-a310-688e30c6d303">
+    <name>МакетHTML</name>
+    <synonym>
+      <key>ru</key>
+      <value>Макет HTML</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+  <templates uuid="e8cac34e-3943-4fba-a319-482037a83e43">
+    <name>МакетCSS</name>
+    <synonym>
+      <key>ru</key>
+      <value>Макет CSS</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+  <templates uuid="1f55e015-1709-4035-915d-0d72e2a10824">
+    <name>МакетJS</name>
+    <synonym>
+      <key>ru</key>
+      <value>Макет JS</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+  <templates uuid="d4dc2d80-7748-47ee-87b1-b68089d35107">
+    <name>МаплибреJS</name>
+    <synonym>
+      <key>ru</key>
+      <value>MapLibre GL JS</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+  <templates uuid="7bdf8b15-b7f9-4b00-b423-f8ed25db12ed">
+    <name>МаплибреCSS</name>
+    <synonym>
+      <key>ru</key>
+      <value>MapLibre GL CSS</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+  <templates uuid="5ae3f86f-54eb-4bc2-9e8e-d134aedde8d2">
+    <name>ДиагностикаHTML</name>
+    <synonym>
+      <key>ru</key>
+      <value>Диагностика HTML</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+  <templates uuid="aaf48088-065c-40ed-8a5c-02bfc5f52829">
+    <name>СтильМорскойОбстановки</name>
+    <synonym>
+      <key>ru</key>
+      <value>Стиль морской обстановки (JSON слоев)</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+  <templates uuid="fac6733e-4743-4392-ab7d-8f6d760ca37e">
+    <name>КешКартыJS</name>
+    <synonym>
+      <key>ru</key>
+      <value>Кеш карты JS (общий код кеша и протокола harbor://)</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+  <templates uuid="f9bdb11c-356b-4637-859e-83167be0d469">
+    <name>СохраненныйОтветOpenWaters</name>
+    <synonym>
+      <key>ru</key>
+      <value>Сохраненный ответ Open Waters (17.10.2026)</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+</mdclass:DataProcessor>

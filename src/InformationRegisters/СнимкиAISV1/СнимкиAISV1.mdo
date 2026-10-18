@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mdclass:InformationRegister xmlns:mdclass="http://g5.1c.ru/v8/dt/metadata/mdclass" uuid="6151db3a-8709-4e2c-8533-67b5b5a8c0de">
+  <producedTypes>
+    <selectionType typeId="523316c9-1227-4ce7-8072-5823f51ba84a" valueTypeId="790bf7cb-9542-4fe6-82b7-c73b9df6df15"/>
+    <listType typeId="5673b822-5820-4b1c-95e7-4b8f75c6e9ff" valueTypeId="a345e930-451e-49bd-8833-2bf85fffe467"/>
+    <managerType typeId="25850970-0503-4687-bb86-8f5c98bcf1fc" valueTypeId="a04983d6-ea7c-4228-92b8-703956c8d756"/>
+    <recordSetType typeId="9566a97e-c1bf-4358-911e-4cdd5b29f89f" valueTypeId="1e3f6ed9-6b3a-40f1-9f49-478c20b2d851"/>
+    <recordKeyType typeId="a6742437-f40b-4d91-9679-97e029dd5147" valueTypeId="bc134e85-e0a2-4f2e-b870-e906b2e6a135"/>
+    <recordType typeId="f81ad276-42b6-4443-b188-df3c973b66cb" valueTypeId="71eb7870-8c5a-49e5-ab33-c5cd3198388c"/>
+    <recordManagerType typeId="86227c8a-5a3b-4a5d-b744-5dfac1f93596" valueTypeId="948ad192-4f2d-4e33-8bc1-b390e806ed2d"/>
+  </producedTypes>
+  <name>СнимкиAISV1</name>
+  <synonym>
+    <key>ru</key>
+    <value>Снимки AISV1</value>
+  </synonym>
+  <useStandardCommands>true</useStandardCommands>
+  <editType>InDialog</editType>
+  <dataLockControlMode>Managed</dataLockControlMode>
+  <listPresentation>
+    <key>ru</key>
+    <value>Снимки AIS</value>
+  </listPresentation>
+  <resources uuid="04110986-0885-4da1-a65e-a370f4323916">
+    <name>ДатаПолучения</name>
+    <synonym>
+      <key>ru</key>
+      <value>Дата получения (UTC)</value>
+    </synonym>
+    <type>
+      <types>Date</types>
+      <dateQualifiers/>
+    </type>
+  </resources>
+  <resources uuid="cbc17561-ee83-4e2f-8eb1-51c65aff5146">
+    <name>ДанныеJSON</name>
+    <synonym>
+      <key>ru</key>
+      <value>Данные JSON</value>
+    </synonym>
+    <type>
+      <types>String</types>
+      <stringQualifiers/>
+    </type>
+  </resources>
+  <resources uuid="af679e61-fb6e-457a-bf9d-618b670f698e">
+    <name>КоличествоСудов</name>
+    <synonym>
+      <key>ru</key>
+      <value>Количество судов</value>
+    </synonym>
+    <type>
+      <types>Number</types>
+      <numberQualifiers>
+        <precision>10</precision>
+        <nonNegative>true</nonNegative>
+      </numberQualifiers>
+    </type>
+  </resources>
+  <resources uuid="23afff62-dda9-4cb1-9ce9-7d5234fdb618">
+    <name>СамаяСвежаяПозиция</name>
+    <synonym>
+      <key>ru</key>
+      <value>Самая свежая позиция (UTC)</value>
+    </synonym>
+    <type>
+      <types>Date</types>
+      <dateQualifiers/>
+    </type>
+  </resources>
+  <dimensions uuid="a006f8bb-bfd2-4b31-a992-d3fd565ecaa4">
+    <name>Провайдер</name>
+    <synonym>
+      <key>ru</key>
+      <value>Провайдер</value>
+    </synonym>
+    <type>
+      <types>String</types>
+      <stringQualifiers>
+        <length>50</length>
+      </stringQualifiers>
+    </type>
+  </dimensions>
+</mdclass:InformationRegister>

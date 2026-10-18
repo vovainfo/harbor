@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mdclass:DataProcessor xmlns:mdclass="http://g5.1c.ru/v8/dt/metadata/mdclass" uuid="0a2a9106-22cd-4c12-bb09-7d113b0affdb">
+  <producedTypes>
+    <objectType typeId="391a6a68-ef54-465a-8c4a-809d7f6b0c44" valueTypeId="b4269142-a1a5-489e-ad8d-eedcdfd7085e"/>
+    <managerType typeId="2d82c369-8cbf-44f4-8bff-1134bc1ad83f" valueTypeId="1d9850e5-19a0-47bd-8ef6-bf4bde99a8d3"/>
+  </producedTypes>
+  <name>КартаПодходаСудовV1</name>
+  <synonym>
+    <key>ru</key>
+    <value>Карта подхода судов (V1)</value>
+  </synonym>
+  <useStandardCommands>true</useStandardCommands>
+  <defaultForm>DataProcessor.КартаПодходаСудовV1.Form.Форма</defaultForm>
+  <forms uuid="dee28800-c518-4eec-ad40-9a7da64b6ed6">
+    <name>Форма</name>
+    <synonym>
+      <key>ru</key>
+      <value>Карта подхода судов</value>
+    </synonym>
+  </forms>
+  <forms uuid="6e1ed4e0-ab10-443e-9f3d-318b2e884ffc">
+    <name>Диагностика</name>
+    <synonym>
+      <key>ru</key>
+      <value>Диагностика HTML-поля</value>
+    </synonym>
+  </forms>
+  <templates uuid="f61a242c-36e2-467c-9e72-24c3ea92830d">
+    <name>МаплибреJS</name>
+    <synonym>
+      <key>ru</key>
+      <value>MapLibre GL JS</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+  <templates uuid="9c629969-153c-45e9-abb0-fb9506855368">
+    <name>МаплибреCSS</name>
+    <synonym>
+      <key>ru</key>
+      <value>MapLibre GL CSS</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+  <templates uuid="4217d053-5a74-4058-932f-597ff181c7a8">
+    <name>МакетHTML</name>
+    <synonym>
+      <key>ru</key>
+      <value>Макет HTML</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+  <templates uuid="b27ddb54-53da-47fc-8830-a711088d2b6b">
+    <name>МакетCSS</name>
+    <synonym>
+      <key>ru</key>
+      <value>Макет CSS</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+  <templates uuid="31e389ba-e264-4844-9342-f522eb25f000">
+    <name>МакетJS</name>
+    <synonym>
+      <key>ru</key>
+      <value>Макет JS</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+  <templates uuid="2cb5c491-bcd8-4c90-b787-294c3c051d39">
+    <name>ДиагностикаHTML</name>
+    <synonym>
+      <key>ru</key>
+      <value>Диагностика HTML</value>
+    </synonym>
+    <templateType>TextDocument</templateType>
+  </templates>
+</mdclass:DataProcessor>

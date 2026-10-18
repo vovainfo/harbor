@@ -1,0 +1,1555 @@
+(function () {
+    'use strict';
+
+    var commandBridge = document.getElementById('map-command-bridge');
+    var eventBridge = document.getElementById('map-event-bridge');
+    var messageEl = document.getElementById('map-message');
+    var staleBanner = document.getElementById('stale-banner');
+    var loadingEl = document.getElementById('map-loading');
+
+    // Данные события — атрибут data-message: 1С читает его без разбора JSON на клиенте.
+    function sendEvent(type, message) {
+        if (!eventBridge) {
+            return;
+        }
+        eventBridge.setAttribute('data-message', message || '');
+        eventBridge.setAttribute('href', '#event:' + type);
+        if (typeof eventBridge.click === 'function') {
+            eventBridge.click();
+        } else {
+            var evt = document.createEvent('MouseEvents');
+            evt.initEvent('click', true, true);
+            eventBridge.dispatchEvent(evt);
+        }
+    }
+
+    function showMessage(text) {
+        messageEl.textContent = text || '';
+        messageEl.hidden = !text;
+    }
+
+    if (typeof maplibregl !== 'object' || !maplibregl || typeof harborCache !== 'object') {
+        var errors = window.__mapErrors || [];
+        showMessage('Библиотека карты не загрузилась. Откройте «Диагностика».');
+        sendEvent('error', 'Библиотека карты не загрузилась' + (errors.length ? ': ' + errors.join('; ') : ''));
+        return;
+    }
+
+    // ---------- Константы ----------
+
+    // Запасной стиль на случай набора без подложки: без него слои судов добавить некуда.
+    var EMPTY_STYLE = {
+        version: 8,
+        sources: {},
+        layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#dfe8ef' } }]
+    };
+    // Подложки, собранные из стиля набора отбором слоёв: новых ресурсов в наборе не требуют.
+    // «Морская» — Positron без леса, зданий, мелких дорог, ручьёв и подписей улиц (подсчёт объектов
+    // по тайлам района 18.10.2026: на z14 7,2 тыс. объектов против 22,6 тыс. у Positron и 109 тыс. у Liberty).
+    var STYLE_VARIANTS = {
+        minimal: {
+            base: 'positron',
+            layers: [
+                'background', 'landuse_residential', 'water', 'road_area_pier', 'road_pier',
+                'tunnel_motorway_casing', 'tunnel_motorway_inner', 'highway_major_casing', 'highway_major_inner',
+                'highway_motorway_casing', 'highway_motorway_inner', 'highway_motorway_bridge_casing',
+                'highway_motorway_bridge_inner', 'railway', 'railway_dashline', 'water_name_point_label',
+                'water_name_line_label', 'label_other', 'label_village', 'label_town', 'label_city',
+                'label_city_capital'
+            ]
+        }
+    };
+    var SEAMARK_ATTRIBUTION = '<a href="https://www.openseamap.org">OpenSeaMap</a>, '
+        + '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a>';
+    // Площадные типы морской обстановки: замкнутый путь такого типа — район, а не линия.
+    var SEAMARK_AREA_TYPES = [
+        'anchorage', 'anchor_berth', 'berth', 'cable_area', 'dredged_area', 'dumping_ground', 'fairway',
+        'harbour', 'inshore_traffic_zone', 'marine_farm', 'military_area', 'mooring_area', 'pipeline_area',
+        'precautionary_area', 'production_area', 'restricted_area', 'sea_area', 'seaplane_landing_area',
+        'separation_zone', 'separation_roundabout', 'small_craft_facility', 'turning_basin'
+    ];
+    var SEAMARK_COLOURS = {
+        red: '#d32f2f', green: '#2e7d32', yellow: '#fbc02d', black: '#212121', white: '#fafafa',
+        orange: '#ef6c00', blue: '#1565c0', grey: '#757575', brown: '#6d4c41', violet: '#8e24aa',
+        magenta: '#c2185b', amber: '#ffb300'
+    };
+    // Районы, в центре которых ставится значок: якорь стоянки, гавань, маяк-здание, затонувшее судно.
+    var SEAMARK_CENTER_TYPES = ['anchorage', 'harbour', 'light_major', 'wreck'];
+    var SEAMARK_BUOY_SHAPES = ['can', 'conical', 'spherical', 'pillar', 'spar', 'barrel', 'super'];
+    // Цвета значков по морским картам: якорные стоянки, лоцманы и радио — пурпурные, гавани — синие.
+    var SEAMARK_MAGENTA = '#a3007d';
+    var SEAMARK_DARK = '#263238';
+    var LABEL_FONT = ['Noto Sans Regular'];
+    var HULL_MIN_ZOOM = 14;
+    // Цвет единственной категории отслеживаемых: его нет ни в группах судов, ни в морской обстановке,
+    // ни у жёлтого выделения. Жирный стек шрифта загрузчик берёт из стилей вместе с остальными.
+    var WATCH_COLOR = '#00E5FF';
+    var WATCH_FONT = ['Noto Sans Bold'];
+    var WATCH_OLD_POSITION_MIN = 60;
+    var ERROR_EVENT_INTERVAL_MS = 10000;
+
+    // Палитра групп: по ней рисуются иконки, заливка корпусов и легенда.
+    var GROUPS = [
+        { id: 'cargo', color: '#2E7D32', label: 'Грузовые' },
+        { id: 'tanker', color: '#C62828', label: 'Танкеры' },
+        { id: 'passenger', color: '#1565C0', label: 'Пассажирские' },
+        { id: 'tug', color: '#EF6C00', label: 'Буксиры' },
+        { id: 'pilot', color: '#6A1B9A', label: 'Лоцманские' },
+        { id: 'fishing', color: '#00838F', label: 'Рыболовные' },
+        { id: 'hsc', color: '#F9A825', label: 'Скоростные' },
+        { id: 'pleasure', color: '#AD1457', label: 'Прогулочные' },
+        { id: 'other', color: '#616161', label: 'Прочие' }
+    ];
+    var GROUP_BY_ID = {};
+    GROUPS.forEach(function (group) { GROUP_BY_ID[group.id] = group; });
+
+    var AGE_OPACITY = [1.0, 0.8, 0.5, 0.3];
+    var AGE_LABELS = ['до 10 мин', 'до 1 ч', 'до 24 ч', 'старше 24 ч'];
+
+    var NAV_STATUS = [
+        'На ходу под двигателем', 'На якоре', 'Не управляется', 'Ограничено в манёвре',
+        'Стеснено осадкой', 'Ошвартовано', 'На мели', 'Занято ловом',
+        'На ходу под парусом', 'Зарезервировано (HSC)', 'Зарезервировано (WIG)', 'Буксирует кормой',
+        'Толкает или буксирует лагом', 'Зарезервировано', 'Аварийный сигнал (AIS-SART)', 'Не определён'
+    ];
+
+    var NO_SELECTION = -1;
+
+    // ---------- Состояние ----------
+
+    var initial = window.__mapInitialData || {};
+    var region = initial.region;
+    var snapshot = initial.snapshot || null;
+    var cacheSet = initial.set || null;
+    var seamarkLayers = initial.seamarkLayers || [];
+    var SEAMARK_LAYER_IDS = seamarkLayers.map(function (layer) { return layer.id; });
+    var OWN_LAYERS = SEAMARK_LAYER_IDS.concat([
+        'vessel-hulls-fill', 'vessel-hulls-line', 'vessel-hulls-selected',
+        'terminal-point', 'vessel-watched-ring', 'vessel-selected', 'vessel-icons', 'vessel-icons-hull-zoom',
+        'vessel-labels', 'vessel-labels-watched', 'terminal-label'
+    ]);
+    // Список отслеживаемых судов (контракт {version, vessels: [{imo, mmsi, name}]}): приходит начальными
+    // данными и командой setWatchlist.
+    var watchlist = initial.watchlist || { version: '', vessels: [] };
+    var watchPanelOpen = true;
+    var seamarkData = null;
+    var map = null;
+    var vesselsByMmsi = {};
+    var vesselData = { points: emptyCollection(), hulls: emptyCollection() };
+    var selectedMmsi = NO_SELECTION;
+    var popup = null;
+    var attributionControl = null;
+    var attributionText = null;
+    var requestedStyle = null;
+    var lastErrorEventAt = 0;
+    var ui = { basemap: 'positron', seamark: true, hulls: true, labels: true, ageFade: false, watchedOnly: false, maxAgeMin: null };
+    // Слои судов, прозрачность которых зависит от возраста позиции: [слой, свойство, полная непрозрачность].
+    var AGE_OPACITY_PAINT = [
+        ['vessel-hulls-fill', 'fill-opacity', 0.6],
+        ['vessel-hulls-line', 'line-opacity', 1],
+        ['vessel-icons', 'icon-opacity', 1],
+        ['vessel-icons-hull-zoom', 'icon-opacity', 1],
+        ['vessel-labels', 'text-opacity', 1]
+    ];
+
+    // ---------- Подготовка данных судов ----------
+
+    function emptyCollection() {
+        return { type: 'FeatureCollection', features: [] };
+    }
+
+    function groupOf(shipType) {
+        if (shipType == null) {
+            return 'other';
+        }
+        if (shipType >= 70 && shipType <= 79) { return 'cargo'; }
+        if (shipType >= 80 && shipType <= 89) { return 'tanker'; }
+        if (shipType >= 60 && shipType <= 69) { return 'passenger'; }
+        // 31/32 — судно, ведущее буксировку, 52 — буксир: для карты порта это одна группа.
+        if (shipType === 31 || shipType === 32 || shipType === 52) { return 'tug'; }
+        if (shipType === 50) { return 'pilot'; }
+        if (shipType === 30) { return 'fishing'; }
+        if (shipType >= 40 && shipType <= 49) { return 'hsc'; }
+        if (shipType === 36 || shipType === 37) { return 'pleasure'; }
+        return 'other';
+    }
+
+    function ageClassOf(ageMin) {
+        if (ageMin <= 10) { return 0; }
+        if (ageMin <= 60) { return 1; }
+        if (ageMin <= 1440) { return 2; }
+        return 3;
+    }
+
+    function rotationOf(vessel) {
+        if (vessel.heading != null) {
+            return vessel.heading;
+        }
+        if (vessel.cog != null && vessel.sog != null && vessel.sog >= 1) {
+            return vessel.cog;
+        }
+        return null;
+    }
+
+    function hasDimensions(vessel) {
+        return vessel.toBow != null && vessel.toStern != null && vessel.toPort != null
+            && vessel.toStarboard != null && vessel.toBow + vessel.toStern > 0;
+    }
+
+    // Пятиугольник корпуса в координатах судна (x — к правому борту, y — к носу), повёрнутый по курсу.
+    function hullPolygon(vessel, rot) {
+        var a = vessel.toBow;
+        var b = vessel.toStern;
+        var c = vessel.toPort;
+        var d = vessel.toStarboard;
+        var shoulder = a - 0.15 * (a + b);
+        var local = [[-c, -b], [d, -b], [d, shoulder], [(d - c) / 2, a], [-c, shoulder]];
+        var theta = rot * Math.PI / 180;
+        var cos = Math.cos(theta);
+        var sin = Math.sin(theta);
+        var metersPerDegLon = 111320 * Math.cos(vessel.lat * Math.PI / 180);
+        var ring = local.map(function (point) {
+            var east = point[0] * cos + point[1] * sin;
+            var north = -point[0] * sin + point[1] * cos;
+            return [vessel.lon + east / metersPerDegLon, vessel.lat + north / 111320];
+        });
+        ring.push(ring[0]);
+        return ring;
+    }
+
+    // Правило сопоставления (так же — менеджер справочника ОтслеживаемыеСудаV2): IMO, если он есть у обоих,
+    // иначе MMSI.
+    function matchesWatch(item, vessel) {
+        if (item.imo && vessel.imo) {
+            return item.imo === vessel.imo;
+        }
+        return item.mmsi != null && item.mmsi === vessel.mmsi;
+    }
+
+    function isWatched(vessel) {
+        return (watchlist.vessels || []).some(function (item) { return matchesWatch(item, vessel); });
+    }
+
+    function rebuildVesselData() {
+        var points = [];
+        var hulls = [];
+        vesselsByMmsi = {};
+        var vessels = snapshot && snapshot.vessels ? snapshot.vessels : [];
+        var receivedAt = snapshot ? Date.parse(snapshot.receivedAt) : NaN;
+
+        vessels.forEach(function (vessel) {
+            var rot = rotationOf(vessel);
+            var ageMin = Math.max(0, (receivedAt - Date.parse(vessel.seen)) / 60000);
+            if (!isFinite(ageMin)) {
+                ageMin = 0;
+            }
+            var group = groupOf(vessel.shipType);
+            var hasHull = rot != null && hasDimensions(vessel);
+            var watched = isWatched(vessel);
+            vesselsByMmsi[vessel.mmsi] = vessel;
+            points.push({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [vessel.lon, vessel.lat] },
+                properties: {
+                    mmsi: vessel.mmsi,
+                    group: group,
+                    moving: vessel.sog != null && vessel.sog >= 1,
+                    rot: rot,
+                    label: vessel.name ? vessel.name : String(vessel.mmsi),
+                    ageMin: ageMin,
+                    ageClass: ageClassOf(ageMin),
+                    hasHull: hasHull,
+                    watched: watched
+                }
+            });
+            if (hasHull) {
+                hulls.push({
+                    type: 'Feature',
+                    geometry: { type: 'Polygon', coordinates: [hullPolygon(vessel, rot)] },
+                    // watched и у корпуса: фильтр и цвет контура читают свойства корпуса.
+                    properties: {
+                        mmsi: vessel.mmsi, group: group, ageMin: ageMin, ageClass: ageClassOf(ageMin), watched: watched
+                    }
+                });
+            }
+        });
+        vesselData = {
+            points: { type: 'FeatureCollection', features: points },
+            hulls: { type: 'FeatureCollection', features: hulls }
+        };
+    }
+
+    // ---------- Иконки ----------
+
+    function drawVesselShape(ctx, size, shape, color) {
+        var s = size;
+        ctx.beginPath();
+        if (shape === 'arrow') {
+            // Нос смотрит вверх: при icon-rotate = 0 судно идёт на север.
+            ctx.moveTo(s * 0.5, s * 0.06);
+            ctx.lineTo(s * 0.82, s * 0.9);
+            ctx.lineTo(s * 0.5, s * 0.72);
+            ctx.lineTo(s * 0.18, s * 0.9);
+        } else {
+            ctx.moveTo(s * 0.5, s * 0.2);
+            ctx.lineTo(s * 0.78, s * 0.5);
+            ctx.lineTo(s * 0.5, s * 0.8);
+            ctx.lineTo(s * 0.22, s * 0.5);
+        }
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = Math.max(1, s * 0.07);
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+    }
+
+    function vesselIconCanvas(shape, color, cssSize, ratio) {
+        var canvas = document.createElement('canvas');
+        var size = Math.round(cssSize * ratio);
+        canvas.width = size;
+        canvas.height = size;
+        drawVesselShape(canvas.getContext('2d'), size, shape, color);
+        return canvas;
+    }
+
+    // Растровые иконки без sdf: картинка с жёстким краем при sdf рисуется рвано.
+    function addVesselIcons() {
+        var ratio = window.devicePixelRatio || 1;
+        GROUPS.forEach(function (group) {
+            ['arrow', 'diamond'].forEach(function (shape) {
+                var name = group.id + '-' + shape;
+                if (map.hasImage(name)) {
+                    return;
+                }
+                var canvas = vesselIconCanvas(shape, group.color, 24, ratio);
+                var image = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+                map.addImage(name, image, { pixelRatio: ratio });
+            });
+        });
+    }
+
+    // ---------- Слои ----------
+
+    function ownLayer(id) {
+        return OWN_LAYERS.indexOf(id) !== -1;
+    }
+
+    function firstBaseSymbolLayerId() {
+        var layers = map.getStyle().layers || [];
+        for (var i = 0; i < layers.length; i++) {
+            if (layers[i].type === 'symbol' && !ownLayer(layers[i].id)) {
+                return layers[i].id;
+            }
+        }
+        return undefined;
+    }
+
+    function applyRussianLabels() {
+        var layers = map.getStyle().layers || [];
+        layers.forEach(function (layer) {
+            if (layer.type !== 'symbol' || ownLayer(layer.id)) {
+                return;
+            }
+            var field = map.getLayoutProperty(layer.id, 'text-field');
+            if (field && /"name|\{name/.test(JSON.stringify(field))) {
+                map.setLayoutProperty(layer.id, 'text-field', ['coalesce', ['get', 'name:ru'], ['get', 'name']]);
+            }
+        });
+    }
+
+    function groupColorExpression() {
+        var expression = ['match', ['get', 'group']];
+        GROUPS.forEach(function (group) {
+            expression.push(group.id, group.color);
+        });
+        expression.push(GROUP_BY_ID.other.color);
+        return expression;
+    }
+
+    // Градация выключена — все суда с полной непрозрачностью слоя.
+    function ageOpacityExpression(maxOpacity) {
+        if (!ui.ageFade) {
+            return maxOpacity;
+        }
+        return ['match', ['get', 'ageClass'],
+            0, AGE_OPACITY[0] * maxOpacity,
+            1, AGE_OPACITY[1] * maxOpacity,
+            2, AGE_OPACITY[2] * maxOpacity,
+            AGE_OPACITY[3] * maxOpacity];
+    }
+
+    function addLayerIfMissing(layer, beforeId) {
+        if (!map.getLayer(layer.id)) {
+            map.addLayer(layer, beforeId);
+        }
+    }
+
+    // Добавляет свои источники и слои в текущий стиль. Вызывается на каждом style.load:
+    // первая загрузка, смена подложки и запасной пустой стиль пересобирают стиль целиком.
+    function ensureOwnLayers() {
+        addVesselIcons();
+        applyRussianLabels();
+        var hasGlyphs = !!map.getStyle().glyphs;
+        var beforeLabels = firstBaseSymbolLayerId();
+
+        if (seamarkData && !map.getSource('seamark')) {
+            map.addSource('seamark', { type: 'geojson', data: seamarkData, attribution: SEAMARK_ATTRIBUTION });
+        }
+        if (!map.getSource('vessels')) {
+            map.addSource('vessels', { type: 'geojson', data: vesselData.points });
+        }
+        if (!map.getSource('vessel-hulls')) {
+            map.addSource('vessel-hulls', { type: 'geojson', data: vesselData.hulls });
+        }
+        if (!map.getSource('terminal')) {
+            map.addSource('terminal', {
+                type: 'geojson',
+                data: {
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: region.terminal },
+                    properties: { label: 'ВМКТ' }
+                }
+            });
+        }
+
+        if (seamarkData) {
+            seamarkLayers.forEach(function (layer) {
+                // Подписям обстановки нужны шрифты: в запасном стиле их нет. Значкам шрифты не нужны.
+                if (!(layer.layout && layer.layout['text-field']) || hasGlyphs) {
+                    addLayerIfMissing(layer, beforeLabels);
+                }
+            });
+        }
+        addLayerIfMissing({
+            id: 'vessel-hulls-fill', type: 'fill', source: 'vessel-hulls', minzoom: HULL_MIN_ZOOM,
+            paint: { 'fill-color': groupColorExpression(), 'fill-opacity': ageOpacityExpression(0.6) }
+        });
+        addLayerIfMissing({
+            id: 'vessel-hulls-line', type: 'line', source: 'vessel-hulls', minzoom: HULL_MIN_ZOOM,
+            paint: {
+                'line-color': ['case', ['==', ['get', 'watched'], true], WATCH_COLOR, '#263238'],
+                'line-width': ['case', ['==', ['get', 'watched'], true], 2.5, 1],
+                'line-opacity': ageOpacityExpression(1)
+            }
+        });
+        addLayerIfMissing({
+            id: 'vessel-hulls-selected', type: 'line', source: 'vessel-hulls', minzoom: HULL_MIN_ZOOM,
+            paint: { 'line-color': '#ffd600', 'line-width': 3 }
+        });
+        addLayerIfMissing({
+            id: 'terminal-point', type: 'circle', source: 'terminal',
+            paint: {
+                'circle-radius': 5, 'circle-color': '#37474f',
+                'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2
+            }
+        });
+        // Радиус больше жёлтого круга выделения (15): при выделенном отслеживаемом видны оба.
+        addLayerIfMissing({
+            id: 'vessel-watched-ring', type: 'circle', source: 'vessels',
+            paint: {
+                'circle-radius': 18, 'circle-color': 'rgba(0, 0, 0, 0)',
+                'circle-stroke-color': WATCH_COLOR, 'circle-stroke-width': 2
+            }
+        });
+        addLayerIfMissing({
+            id: 'vessel-selected', type: 'circle', source: 'vessels',
+            paint: {
+                'circle-radius': 15, 'circle-color': 'rgba(255, 214, 0, 0.25)',
+                'circle-stroke-color': '#ffd600', 'circle-stroke-width': 3
+            }
+        });
+        var iconLayout = {
+            'icon-image': ['concat', ['get', 'group'], '-', ['case', ['==', ['get', 'moving'], true], 'arrow', 'diamond']],
+            'icon-rotate': ['coalesce', ['get', 'rot'], 0],
+            'icon-rotation-alignment': 'map',
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true,
+            // Отслеживаемые рисуются поверх остальных: symbol-z-order auto сортирует по ключу.
+            'symbol-sort-key': ['case', ['==', ['get', 'watched'], true], 1, 0],
+            'icon-size': ['case', ['==', ['get', 'watched'], true], 1.3, 1]
+        };
+        var iconPaint = { 'icon-opacity': ageOpacityExpression(1) };
+        // Значок до зума корпусов и значок судов без корпуса после него — два слоя вместо зум-фильтра.
+        addLayerIfMissing({
+            id: 'vessel-icons', type: 'symbol', source: 'vessels', maxzoom: HULL_MIN_ZOOM,
+            layout: iconLayout, paint: iconPaint
+        });
+        addLayerIfMissing({
+            id: 'vessel-icons-hull-zoom', type: 'symbol', source: 'vessels', minzoom: HULL_MIN_ZOOM,
+            layout: iconLayout, paint: iconPaint
+        });
+        if (hasGlyphs) {
+            addLayerIfMissing({
+                id: 'vessel-labels', type: 'symbol', source: 'vessels', minzoom: 12,
+                layout: {
+                    'text-field': ['get', 'label'], 'text-font': LABEL_FONT, 'text-size': 11,
+                    'text-anchor': 'top', 'text-offset': [0, 1.1], 'text-optional': true
+                },
+                paint: {
+                    'text-color': '#102a43', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5,
+                    'text-opacity': ageOpacityExpression(1)
+                }
+            });
+            // Подпись отслеживаемого видна на любом масштабе; обычные подписи — с z12.
+            addLayerIfMissing({
+                id: 'vessel-labels-watched', type: 'symbol', source: 'vessels',
+                layout: {
+                    'text-field': ['get', 'label'], 'text-font': WATCH_FONT, 'text-size': 12,
+                    'text-anchor': 'top', 'text-offset': [0, 1.2], 'text-optional': true
+                },
+                paint: { 'text-color': '#102a43', 'text-halo-color': WATCH_COLOR, 'text-halo-width': 2 }
+            });
+            addLayerIfMissing({
+                id: 'terminal-label', type: 'symbol', source: 'terminal',
+                layout: {
+                    'text-field': ['get', 'label'], 'text-font': LABEL_FONT, 'text-size': 12,
+                    'text-anchor': 'left', 'text-offset': [0.8, 0]
+                },
+                paint: { 'text-color': '#37474f', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 }
+            });
+        }
+        applyLayerState();
+    }
+
+    function setVisibility(layerId, visible) {
+        if (map && map.getLayer(layerId)) {
+            map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+        }
+    }
+
+    function setPaintIfPresent(layerId, property, value) {
+        if (map && map.getLayer(layerId)) {
+            map.setPaintProperty(layerId, property, value);
+        }
+    }
+
+    function setFilterIfPresent(layerId, filter) {
+        if (map && map.getLayer(layerId)) {
+            map.setFilter(layerId, filter);
+        }
+    }
+
+    // Видимость, фильтр возраста и выделение — из переменных viewer, поэтому переживают смену стиля.
+    function applyLayerState() {
+        SEAMARK_LAYER_IDS.forEach(function (layerId) {
+            setVisibility(layerId, ui.seamark);
+        });
+        setVisibility('vessel-hulls-fill', ui.hulls);
+        setVisibility('vessel-hulls-line', ui.hulls);
+        setVisibility('vessel-hulls-selected', ui.hulls);
+        setVisibility('vessel-labels', ui.labels);
+        setVisibility('vessel-labels-watched', ui.labels);
+        AGE_OPACITY_PAINT.forEach(function (paint) {
+            setPaintIfPresent(paint[0], paint[1], ageOpacityExpression(paint[2]));
+        });
+        document.getElementById('legend-age').style.display = ui.ageFade ? '' : 'none';
+
+        var ageFilter = ui.maxAgeMin == null ? null : ['<=', ['get', 'ageMin'], ui.maxAgeMin];
+        var watchedFilter = ['==', ['get', 'watched'], true];
+        var onlyWatched = ui.watchedOnly ? watchedFilter : null;
+        // Общие условия слоя: возраст, «Только отслеживаемые» и своё условие слоя.
+        function compose(conditions) {
+            var parts = conditions.filter(function (part) { return !!part; });
+            if (!parts.length) {
+                return null;
+            }
+            return parts.length === 1 ? parts[0] : ['all'].concat(parts);
+        }
+        setFilterIfPresent('vessel-icons', compose([ageFilter, onlyWatched]));
+        // При выключенных корпусах значок нужен всем судам и на крупном масштабе.
+        setFilterIfPresent('vessel-icons-hull-zoom',
+            compose([ageFilter, onlyWatched, ui.hulls ? ['!=', ['get', 'hasHull'], true] : null]));
+        setFilterIfPresent('vessel-labels', compose([ageFilter, onlyWatched, ['!=', ['get', 'watched'], true]]));
+        setFilterIfPresent('vessel-labels-watched', compose([ageFilter, watchedFilter]));
+        setFilterIfPresent('vessel-watched-ring', compose([ageFilter, watchedFilter]));
+        setFilterIfPresent('vessel-hulls-fill', compose([ageFilter, onlyWatched]));
+        setFilterIfPresent('vessel-hulls-line', compose([ageFilter, onlyWatched]));
+
+        var selection = ['==', ['get', 'mmsi'], selectedMmsi];
+        setFilterIfPresent('vessel-selected', compose([selection, onlyWatched]));
+        setFilterIfPresent('vessel-hulls-selected', compose([selection, onlyWatched]));
+    }
+
+    // ---------- Снимок ----------
+
+    function escapeHtml(text) {
+        return String(text).replace(/[&<>"']/g, function (ch) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+        });
+    }
+
+    // Атрибуция снимка приходит из внешней сети: в контрол она попадает только экранированной.
+    function updateAttribution() {
+        var text = snapshot && snapshot.attribution ? snapshot.attribution : 'Open Waters AIS';
+        if (text === attributionText) {
+            return;
+        }
+        attributionText = text;
+        if (attributionControl) {
+            map.removeControl(attributionControl);
+        }
+        // Свёрнута в кнопку «ⓘ», текст источников — по нажатию (решение пользователя 18.10.2026).
+        attributionControl = new maplibregl.AttributionControl({
+            compact: true,
+            customAttribution: escapeHtml(text)
+        });
+        map.addControl(attributionControl, 'bottom-right');
+    }
+
+    function updateStaleBanner() {
+        var text = '';
+        if (!snapshot) {
+            text = 'Снимка AIS ещё нет';
+        } else if (snapshot.freshestSeen) {
+            var ageMin = (Date.parse(snapshot.receivedAt) - Date.parse(snapshot.freshestSeen)) / 60000;
+            if (ageMin > 60) {
+                text = 'Данные AIS устарели: самая свежая позиция ' + formatAge(ageMin) + ' назад';
+            }
+        }
+        staleBanner.textContent = text;
+        staleBanner.hidden = !text;
+    }
+
+    // Снимок, пришедший до startMap, только запоминается: источники появятся при создании карты.
+    function applySnapshot() {
+        rebuildVesselData();
+        updateStaleBanner();
+        if (!map) {
+            renderWatchPanel();
+            return;
+        }
+        var points = map.getSource('vessels');
+        if (points) {
+            points.setData(vesselData.points);
+        }
+        var hulls = map.getSource('vessel-hulls');
+        if (hulls) {
+            hulls.setData(vesselData.hulls);
+        }
+        updateAttribution();
+        refreshPopup();
+        renderWatchPanel();
+    }
+
+    // ---------- Popup ----------
+
+    function formatAge(ageMin) {
+        var minutes = Math.max(0, Math.floor(ageMin));
+        if (minutes < 60) {
+            return minutes + ' мин';
+        }
+        var hours = Math.floor(minutes / 60);
+        if (hours < 24) {
+            return hours + ' ч ' + (minutes % 60) + ' мин';
+        }
+        return Math.floor(hours / 24) + ' сут ' + (hours % 24) + ' ч';
+    }
+
+    function formatNumber(value, digits, unit) {
+        return value == null ? '—' : Number(value).toFixed(digits) + (unit || '');
+    }
+
+    function popupRow(container, label, value) {
+        var row = document.createElement('div');
+        row.className = 'vessel-popup-row';
+        var labelEl = document.createElement('div');
+        labelEl.className = 'vessel-popup-label';
+        labelEl.textContent = label;
+        var valueEl = document.createElement('div');
+        valueEl.className = 'vessel-popup-value';
+        valueEl.textContent = value == null || value === '' ? '—' : String(value);
+        row.appendChild(labelEl);
+        row.appendChild(valueEl);
+        container.appendChild(row);
+    }
+
+    // Содержимое собирается через textContent: имена и назначения приходят из внешней сети и содержат <, >, &.
+    function popupContent(vessel) {
+        var root = document.createElement('div');
+        root.className = 'vessel-popup';
+        var title = document.createElement('div');
+        title.className = 'vessel-popup-title';
+        title.textContent = vessel.name || ('MMSI ' + vessel.mmsi);
+        root.appendChild(title);
+
+        var group = GROUP_BY_ID[groupOf(vessel.shipType)];
+        var receivedAt = Date.parse(snapshot.receivedAt);
+        var seenAt = Date.parse(vessel.seen);
+        popupRow(root, 'IMO / MMSI', (vessel.imo || '—') + ' / ' + vessel.mmsi);
+        popupRow(root, 'Позывной', vessel.callsign);
+        popupRow(root, 'Флаг', vessel.flag);
+        popupRow(root, 'Тип', group.label + (vessel.shipType != null ? ' (код ' + vessel.shipType + ')' : ''));
+        popupRow(root, 'Статус', vessel.navStatus != null ? NAV_STATUS[vessel.navStatus] : null);
+        popupRow(root, 'Скорость / курс',
+            formatNumber(vessel.sog, 1, ' уз') + ' · COG ' + formatNumber(vessel.cog, 0, '°')
+            + ' · HDG ' + formatNumber(vessel.heading, 0, '°'));
+        popupRow(root, 'Размеры', vessel.length != null || vessel.beam != null
+            ? formatNumber(vessel.length, 0, '') + ' × ' + formatNumber(vessel.beam, 0, ' м') : null);
+        popupRow(root, 'Осадка', vessel.draught != null ? formatNumber(vessel.draught, 1, ' м') : null);
+        popupRow(root, 'Назначение', vessel.destination);
+        popupRow(root, 'ETA (UTC)', vessel.eta);
+        popupRow(root, 'Позиция от', new Date(seenAt).toLocaleString('ru-RU')
+            + ' (' + formatAge((receivedAt - seenAt) / 60000) + ' назад)');
+        popupRow(root, 'Источник', vessel.source);
+        if (isWatched(vessel)) {
+            popupRow(root, 'Отслеживание', 'Отслеживается');
+        }
+
+        // Карточку открывает 1С по событию: popup данные с сервера не запрашивает.
+        var details = document.createElement('button');
+        details.type = 'button';
+        details.className = 'vessel-popup-details';
+        details.textContent = 'Подробнее';
+        details.addEventListener('click', function () {
+            sendEvent('vessel', String(vessel.mmsi));
+        });
+        root.appendChild(details);
+        return root;
+    }
+
+    function selectVessel(mmsi) {
+        selectedMmsi = mmsi;
+        applyLayerState();
+    }
+
+    function openPopup(mmsi) {
+        var vessel = vesselsByMmsi[mmsi];
+        if (!vessel) {
+            return;
+        }
+        if (popup) {
+            popup.remove();
+        }
+        selectVessel(mmsi);
+        popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '340px', offset: 14 })
+            .setLngLat([vessel.lon, vessel.lat])
+            .setDOMContent(popupContent(vessel))
+            .addTo(map);
+        var opened = popup;
+        opened.on('close', function () {
+            if (popup === opened) {
+                popup = null;
+                selectVessel(NO_SELECTION);
+            }
+        });
+    }
+
+    // Popup хранит свои координаты и за setData не едет: переносим или закрываем его сами.
+    function refreshPopup() {
+        if (!popup || selectedMmsi === NO_SELECTION) {
+            return;
+        }
+        var vessel = vesselsByMmsi[selectedMmsi];
+        if (vessel) {
+            popup.setLngLat([vessel.lon, vessel.lat]).setDOMContent(popupContent(vessel));
+        } else {
+            popup.remove();
+        }
+    }
+
+    // ---------- Легенда и панель ----------
+
+    function buildLegend() {
+        var legend = document.getElementById('legend');
+        var title = document.createElement('div');
+        title.className = 'legend-title';
+        title.textContent = 'Суда';
+        legend.appendChild(title);
+        var ratio = window.devicePixelRatio || 1;
+        GROUPS.forEach(function (group) {
+            var row = document.createElement('div');
+            row.className = 'legend-row';
+            row.appendChild(vesselIconCanvas('arrow', group.color, 16, ratio));
+            var label = document.createElement('span');
+            label.textContent = group.label;
+            row.appendChild(label);
+            legend.appendChild(row);
+        });
+        var watchedRow = document.createElement('div');
+        watchedRow.className = 'legend-row';
+        var ring = document.createElement('span');
+        ring.className = 'legend-ring';
+        watchedRow.appendChild(ring);
+        var watchedLabel = document.createElement('span');
+        watchedLabel.textContent = 'Отслеживаемое';
+        watchedRow.appendChild(watchedLabel);
+        legend.appendChild(watchedRow);
+        // Блок возраста — отдельным узлом: при выключенной градации он скрывается.
+        var ageLegend = document.createElement('div');
+        ageLegend.id = 'legend-age';
+        ageLegend.style.display = ui.ageFade ? '' : 'none';
+        legend.appendChild(ageLegend);
+        var ageTitle = document.createElement('div');
+        ageTitle.className = 'legend-title';
+        ageTitle.textContent = 'Возраст позиции';
+        ageLegend.appendChild(ageTitle);
+        AGE_LABELS.forEach(function (text, index) {
+            var row = document.createElement('div');
+            row.className = 'legend-row';
+            var swatch = document.createElement('span');
+            swatch.className = 'legend-swatch';
+            swatch.style.opacity = AGE_OPACITY[index];
+            row.appendChild(swatch);
+            var label = document.createElement('span');
+            label.textContent = text;
+            row.appendChild(label);
+            ageLegend.appendChild(row);
+        });
+    }
+
+    // ---------- Панель «Отслеживаемые суда» ----------
+
+    // Позиция «старше 1 ч» — от времени снимка, той же шкалой, что легенда: устаревший снимок целиком
+    // уже отмечает жёлтая плашка.
+    function watchStatus(item) {
+        var vessels = snapshot && snapshot.vessels ? snapshot.vessels : [];
+        var receivedAt = snapshot ? Date.parse(snapshot.receivedAt) : NaN;
+        for (var i = 0; i < vessels.length; i++) {
+            if (matchesWatch(item, vessels[i])) {
+                var ageMin = (receivedAt - Date.parse(vessels[i].seen)) / 60000;
+                return {
+                    vessel: vessels[i],
+                    code: ageMin > WATCH_OLD_POSITION_MIN ? 'old' : 'on-map',
+                    text: ageMin > WATCH_OLD_POSITION_MIN ? 'позиция старше 1 ч' : 'на карте'
+                };
+            }
+        }
+        return { vessel: null, code: 'missing', text: 'нет в снимке' };
+    }
+
+    function watchIds(item) {
+        var parts = [];
+        if (item.imo) {
+            parts.push('IMO ' + item.imo);
+        }
+        if (item.mmsi) {
+            parts.push('MMSI ' + item.mmsi);
+        }
+        return parts.join(' · ');
+    }
+
+    function flyToVessel(vessel) {
+        if (!map) {
+            return;
+        }
+        map.flyTo({ center: [vessel.lon, vessel.lat], zoom: Math.max(map.getZoom(), 13) });
+        openPopup(vessel.mmsi);
+    }
+
+    // Строки собираются через textContent: названия приходят от пользователей и из внешней сети.
+    function renderWatchPanel() {
+        var panel = document.getElementById('watch-panel');
+        var list = document.getElementById('watch-list');
+        var items = watchlist.vessels || [];
+        panel.hidden = !items.length;
+        while (list.firstChild) {
+            list.removeChild(list.firstChild);
+        }
+        var onMap = 0;
+        items.forEach(function (item) {
+            var status = watchStatus(item);
+            if (status.vessel) {
+                onMap++;
+            }
+            var row = document.createElement('div');
+            row.className = 'watch-row' + (status.vessel ? ' watch-row-active' : '');
+            var name = document.createElement('div');
+            name.className = 'watch-name';
+            name.textContent = item.name || (status.vessel && status.vessel.name) || watchIds(item);
+            row.appendChild(name);
+            var ids = document.createElement('div');
+            ids.className = 'watch-ids';
+            ids.textContent = watchIds(item);
+            row.appendChild(ids);
+            var state = document.createElement('div');
+            state.className = 'watch-status-' + status.code;
+            state.textContent = status.text;
+            row.appendChild(state);
+            if (status.vessel) {
+                row.addEventListener('click', function () { flyToVessel(status.vessel); });
+            }
+            list.appendChild(row);
+        });
+        document.getElementById('watch-title').textContent = (watchPanelOpen ? '▾ ' : '▸ ')
+            + 'Отслеживаемые суда: на карте ' + onMap + ' из ' + items.length;
+        list.style.display = watchPanelOpen ? '' : 'none';
+    }
+
+    function setStyle(style) {
+        requestedStyle = style;
+        map.setStyle(style, { diff: false });
+    }
+
+    function bindPanel() {
+        document.getElementById('opt-basemap').addEventListener('change', function (event) {
+            ui.basemap = event.target.value;
+            if (map) {
+                showMessage('');
+                setStyle(styleFor(ui.basemap));
+            }
+        });
+        document.getElementById('opt-seamark').addEventListener('change', function (event) {
+            ui.seamark = event.target.checked;
+            applyLayerState();
+        });
+        document.getElementById('opt-hulls').addEventListener('change', function (event) {
+            ui.hulls = event.target.checked;
+            applyLayerState();
+        });
+        document.getElementById('opt-labels').addEventListener('change', function (event) {
+            ui.labels = event.target.checked;
+            applyLayerState();
+        });
+        document.getElementById('opt-age-fade').addEventListener('change', function (event) {
+            ui.ageFade = event.target.checked;
+            applyLayerState();
+        });
+        // Панель слоёв сворачивается до заголовка, чтобы не закрывать карту.
+        document.getElementById('layer-panel-header').addEventListener('click', function () {
+            var body = document.getElementById('layer-panel-body');
+            var collapse = body.style.display !== 'none';
+            body.style.display = collapse ? 'none' : '';
+            document.getElementById('layer-panel-arrow').textContent = collapse ? '▸' : '▾';
+        });
+        document.getElementById('opt-watched-only').addEventListener('change', function (event) {
+            ui.watchedOnly = event.target.checked;
+            applyLayerState();
+        });
+        document.getElementById('watch-title').addEventListener('click', function () {
+            watchPanelOpen = !watchPanelOpen;
+            renderWatchPanel();
+        });
+        document.getElementById('opt-age').addEventListener('change', function (event) {
+            ui.maxAgeMin = event.target.value ? Number(event.target.value) : null;
+            applyLayerState();
+        });
+    }
+
+    // ---------- Кеш набора ----------
+
+    function showLoading(text) {
+        loadingEl.textContent = text || '';
+        loadingEl.hidden = !text;
+    }
+
+    function loadingText() {
+        var received = harborCache.packageCount();
+        var percent = cacheSet.packages ? Math.floor(received * 100 / cacheSet.packages) : 100;
+        return 'Загрузка карты: ' + percent + ' %';
+    }
+
+    // Пакет приходит объектом: команда собрана конкатенацией, второго JSON.parse нет.
+    function addCachePackage(cachePackage) {
+        if (!cacheSet || !cachePackage || cachePackage.set !== cacheSet.id) {
+            throw new Error('Пакет не из набора, с которым открыта карта');
+        }
+        harborCache.addPackage(cachePackage);
+        showLoading(loadingText());
+        return String(harborCache.packageCount());
+    }
+
+    function styleFor(name) {
+        var variant = STYLE_VARIANTS[name];
+        var style = harborCache.style(variant ? variant.base : name);
+        if (style && variant) {
+            style.layers = style.layers.filter(function (layer) { return variant.layers.indexOf(layer.id) !== -1; });
+        }
+        return style || EMPTY_STYLE;
+    }
+
+    // ---------- Морская обстановка ----------
+
+    function seamarkColour(tags, type) {
+        var value = tags['seamark:' + type + ':colour'] || tags['seamark:light:colour'] || tags['seamark:light:1:colour'];
+        return value ? SEAMARK_COLOURS[String(value).split(';')[0]] || null : null;
+    }
+
+    function hasLight(tags, type) {
+        if (type.indexOf('light') === 0) {
+            return true;
+        }
+        return Object.keys(tags).some(function (key) { return key.indexOf('seamark:light') === 0; });
+    }
+
+    // Цвета буя или знака сверху вниз (до трёх полос); имена — ключи SEAMARK_COLOURS.
+    function seamarkBands(tags, type) {
+        var value = tags['seamark:' + type + ':colour'];
+        var bands = value ? String(value).split(';').filter(function (c) { return !!SEAMARK_COLOURS[c]; }) : [];
+        return bands.length ? bands.slice(0, 3).join('.') : 'grey';
+    }
+
+    // Белый и жёлтый огонь на карте — жёлтая «капля», красный и зелёный — своим цветом.
+    function lightColour(tags) {
+        var value = tags['seamark:light:colour'] || tags['seamark:light:1:colour'];
+        var colour = value ? String(value).split(';')[0] : '';
+        return colour === 'red' || colour === 'green' ? colour : 'yellow';
+    }
+
+    // Имя значка кодирует всё, что нужно для рисования: sm-<вид>-<форма>-<цвета через точку>.
+    // Картинку рисует addSeamarkIcon по событию styleimagemissing.
+    function seamarkIcon(tags, type) {
+        if (type === 'anchorage' || type === 'anchor_berth') {
+            return 'sm-anchor';
+        }
+        if (type === 'harbour') {
+            return 'sm-harbour';
+        }
+        if (type.indexOf('light') === 0) {
+            return 'sm-light-' + lightColour(tags);
+        }
+        if (type.indexOf('buoy_') === 0) {
+            var shape = String(tags['seamark:' + type + ':shape'] || '').replace(/[^a-z]/g, '').replace('superbuoy', 'super');
+            return 'sm-buoy-' + (SEAMARK_BUOY_SHAPES.indexOf(shape) === -1 ? 'pillar' : shape) + '-' + seamarkBands(tags, type);
+        }
+        if (type.indexOf('beacon_') === 0) {
+            return 'sm-beacon-' + seamarkBands(tags, type);
+        }
+        if (type === 'wreck') {
+            return 'sm-wreck';
+        }
+        if (type === 'rock' || type === 'obstruction') {
+            return 'sm-danger';
+        }
+        if (type === 'pilot_boarding') {
+            return 'sm-pilot';
+        }
+        if (type === 'radio_station') {
+            return 'sm-radio';
+        }
+        return null;
+    }
+
+    function seamarkProperties(tags) {
+        var type = tags['seamark:type'];
+        var properties = { type: type, light: hasLight(tags, type) };
+        var name = tags['name:ru'] || tags['seamark:name'] || tags.name;
+        if (name) {
+            properties.name = name;
+        }
+        var colour = seamarkColour(tags, type);
+        if (colour) {
+            properties.colour = colour;
+        }
+        var icon = seamarkIcon(tags, type);
+        if (icon) {
+            properties.icon = icon;
+            // Буй и знак стоят основанием на точке, остальные значки — центром.
+            properties.iconAnchor = icon.indexOf('sm-buoy') === 0 || icon.indexOf('sm-beacon') === 0 ? 'bottom' : 'center';
+        }
+        return properties;
+    }
+
+    // Центр масс кольца; для мультиполигона — самого большого кольца.
+    function ringCentroid(ring) {
+        var area = 0;
+        var x = 0;
+        var y = 0;
+        for (var i = 0; i < ring.length - 1; i++) {
+            var cross = ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+            area += cross;
+            x += (ring[i][0] + ring[i + 1][0]) * cross;
+            y += (ring[i][1] + ring[i + 1][1]) * cross;
+        }
+        return area ? { point: [x / (3 * area), y / (3 * area)], area: Math.abs(area) } : { point: ring[0], area: 0 };
+    }
+
+    function areaCentre(geometry) {
+        var rings = geometry.type === 'Polygon' ? [geometry.coordinates[0]]
+            : geometry.coordinates.map(function (polygon) { return polygon[0]; });
+        var best = null;
+        rings.forEach(function (ring) {
+            var centroid = ringCentroid(ring);
+            if (!best || centroid.area > best.area) {
+                best = centroid;
+            }
+        });
+        return best.point;
+    }
+
+    function toLonLat(points) {
+        return points.map(function (point) { return [point.lon, point.lat]; });
+    }
+
+    function samePoint(a, b) {
+        return a[0] === b[0] && a[1] === b[1];
+    }
+
+    function isClosed(line) {
+        return line.length >= 4 && samePoint(line[0], line[line.length - 1]);
+    }
+
+    // Внешние пути мультиполигона Overpass отдаёт кусками: склеиваем их по общим концам в кольца.
+    function joinRings(segments) {
+        var rest = segments.slice();
+        var rings = [];
+        while (rest.length) {
+            var ring = rest.shift().slice();
+            var extended = true;
+            while (!isClosed(ring) && extended) {
+                extended = false;
+                for (var i = 0; i < rest.length; i++) {
+                    var segment = rest[i];
+                    var last = ring[ring.length - 1];
+                    if (samePoint(segment[0], last)) {
+                        ring = ring.concat(segment.slice(1));
+                    } else if (samePoint(segment[segment.length - 1], last)) {
+                        ring = ring.concat(segment.slice(0, -1).reverse());
+                    } else {
+                        continue;
+                    }
+                    rest.splice(i, 1);
+                    extended = true;
+                    break;
+                }
+            }
+            if (isClosed(ring)) {
+                rings.push(ring);
+            }
+        }
+        return rings;
+    }
+
+    function seamarkGeometry(element, properties) {
+        if (element.type === 'node') {
+            return { type: 'Point', coordinates: [element.lon, element.lat] };
+        }
+        if (element.type === 'way' && element.geometry && element.geometry.length >= 2) {
+            var line = toLonLat(element.geometry);
+            if (isClosed(line) && SEAMARK_AREA_TYPES.indexOf(properties.type) !== -1) {
+                return { type: 'Polygon', coordinates: [line] };
+            }
+            return { type: 'LineString', coordinates: line };
+        }
+        if (element.type === 'relation' && element.members) {
+            var outers = element.members.filter(function (member) {
+                return member.type === 'way' && member.role !== 'inner' && member.geometry && member.geometry.length >= 2;
+            });
+            var rings = joinRings(outers.map(function (member) { return toLonLat(member.geometry); }));
+            if (rings.length) {
+                return { type: 'MultiPolygon', coordinates: rings.map(function (ring) { return [ring]; }) };
+            }
+        }
+        return null;
+    }
+
+    // Ответ Overpass (out geom) → GeoJSON. Узлы — точки, замкнутые пути площадных типов — районы,
+    // остальные пути — линии, мультиполигоны — только внешние кольца.
+    function buildSeamarkData() {
+        var overpass = harborCache.json('seamark/overpass');
+        if (!overpass) {
+            return null;
+        }
+        var features = [];
+        (overpass.elements || []).forEach(function (element) {
+            var tags = element.tags || {};
+            if (!tags['seamark:type']) {
+                return;
+            }
+            var properties = seamarkProperties(tags);
+            var geometry = seamarkGeometry(element, properties);
+            if (!geometry) {
+                return;
+            }
+            features.push({ type: 'Feature', geometry: geometry, properties: properties });
+            // Значок района — отдельной точкой в центре: заливка района значка не несёт.
+            var area = geometry.type === 'Polygon' || geometry.type === 'MultiPolygon' || isClosed(geometry.coordinates);
+            if (properties.icon && area && SEAMARK_CENTER_TYPES.indexOf(properties.type) !== -1) {
+                features.push({
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: areaCentre(geometry.type === 'LineString'
+                        ? { type: 'Polygon', coordinates: [geometry.coordinates] } : geometry) },
+                    properties: { type: properties.type, icon: properties.icon, iconAnchor: properties.iconAnchor }
+                });
+            }
+        });
+        return { type: 'FeatureCollection', features: features };
+    }
+
+    // ---------- Значки морской обстановки ----------
+
+    function strokeWithHalo(ctx, colour, width) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.lineWidth = width + 2.5;
+        ctx.stroke();
+        ctx.strokeStyle = colour;
+        ctx.lineWidth = width;
+        ctx.stroke();
+    }
+
+    function drawAnchor(ctx, w, h, colour) {
+        var cx = w / 2;
+        var cy = h / 2;
+        var r = w * 0.42;
+        var from = 0.15 * Math.PI;
+        var to = 0.85 * Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(cx + r * 0.18, cy - r * 0.75);
+        ctx.arc(cx, cy - r * 0.75, r * 0.18, 0, 2 * Math.PI);
+        ctx.moveTo(cx, cy - r * 0.57);
+        ctx.lineTo(cx, cy + r * 0.85);
+        ctx.moveTo(cx - r * 0.45, cy - r * 0.32);
+        ctx.lineTo(cx + r * 0.45, cy - r * 0.32);
+        ctx.moveTo(cx + r * 0.65 * Math.cos(from), cy + r * 0.2 + r * 0.65 * Math.sin(from));
+        ctx.arc(cx, cy + r * 0.2, r * 0.65, from, to);
+        strokeWithHalo(ctx, colour, 1.6);
+    }
+
+    // «Капля» огня по морским картам: острый конец на точке огня, тело уходит вправо вверх.
+    function drawLight(ctx, w, h, colourName) {
+        var length = w * 0.4;
+        var radius = w * 0.15;
+        ctx.save();
+        ctx.translate(w / 2, h / 2);
+        ctx.rotate(Math.PI / 4);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(-radius * 1.1, -length * 0.55, -radius, -length);
+        ctx.arc(0, -length, radius, Math.PI, 2 * Math.PI);
+        ctx.quadraticCurveTo(radius * 1.1, -length * 0.55, 0, 0);
+        ctx.closePath();
+        ctx.fillStyle = colourName === 'yellow' ? '#ffc400' : SEAMARK_COLOURS[colourName];
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = SEAMARK_DARK;
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function buoyPath(ctx, shape, w, base, h) {
+        var cx = w / 2;
+        ctx.beginPath();
+        if (shape === 'can') {
+            ctx.rect(cx - w * 0.3, base - h * 0.5, w * 0.6, h * 0.5);
+        } else if (shape === 'conical') {
+            ctx.moveTo(cx - w * 0.34, base);
+            ctx.lineTo(cx, base - h * 0.62);
+            ctx.lineTo(cx + w * 0.34, base);
+            ctx.closePath();
+        } else if (shape === 'spherical') {
+            ctx.arc(cx, base - w * 0.32, w * 0.32, 0, 2 * Math.PI);
+        } else if (shape === 'spar') {
+            ctx.rect(cx - w * 0.09, base - h * 0.8, w * 0.18, h * 0.8);
+        } else if (shape === 'barrel') {
+            ctx.ellipse(cx, base - h * 0.2, w * 0.4, h * 0.2, 0, 0, 2 * Math.PI);
+        } else if (shape === 'super') {
+            ctx.rect(cx - w * 0.42, base - h * 0.4, w * 0.84, h * 0.4);
+        } else {
+            ctx.moveTo(cx - w * 0.26, base);
+            ctx.lineTo(cx - w * 0.1, base - h * 0.75);
+            ctx.lineTo(cx + w * 0.1, base - h * 0.75);
+            ctx.lineTo(cx + w * 0.26, base);
+            ctx.closePath();
+        }
+    }
+
+    // Полосы цветов сверху вниз внутри контура, затем контур и линия воды.
+    function fillBands(ctx, w, h, bands) {
+        var colours = bands.split('.');
+        ctx.save();
+        ctx.clip();
+        for (var i = 0; i < colours.length; i++) {
+            ctx.fillStyle = SEAMARK_COLOURS[colours[i]] || SEAMARK_COLOURS.grey;
+            ctx.fillRect(0, h * i / colours.length, w, h / colours.length + 1);
+        }
+        ctx.restore();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = SEAMARK_DARK;
+        ctx.stroke();
+    }
+
+    function drawBuoy(ctx, w, h, shape, bands) {
+        var base = h - 2.5;
+        buoyPath(ctx, shape, w, base, h - 4);
+        fillBands(ctx, w, h, bands);
+        ctx.beginPath();
+        ctx.moveTo(w * 0.08, base + 1.2);
+        ctx.lineTo(w * 0.92, base + 1.2);
+        ctx.stroke();
+    }
+
+    function drawBeacon(ctx, w, h, bands) {
+        var base = h - 1.5;
+        ctx.beginPath();
+        ctx.rect(w / 2 - w * 0.12, h * 0.1, w * 0.24, base - h * 0.1);
+        fillBands(ctx, w, h, bands);
+        ctx.beginPath();
+        ctx.moveTo(w * 0.2, base);
+        ctx.lineTo(w * 0.8, base);
+        ctx.stroke();
+    }
+
+    function drawWreck(ctx, w, h) {
+        var cy = h / 2;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.12, cy);
+        ctx.lineTo(w * 0.88, cy);
+        ctx.moveTo(w * 0.32, cy - h * 0.18);
+        ctx.lineTo(w * 0.32, cy + h * 0.18);
+        ctx.moveTo(w * 0.5, cy - h * 0.28);
+        ctx.lineTo(w * 0.5, cy + h * 0.28);
+        ctx.moveTo(w * 0.68, cy - h * 0.18);
+        ctx.lineTo(w * 0.68, cy + h * 0.18);
+        strokeWithHalo(ctx, SEAMARK_DARK, 1.4);
+    }
+
+    function drawDanger(ctx, w, h) {
+        ctx.beginPath();
+        ctx.moveTo(w * 0.25, h / 2);
+        ctx.lineTo(w * 0.75, h / 2);
+        ctx.moveTo(w / 2, h * 0.25);
+        ctx.lineTo(w / 2, h * 0.75);
+        strokeWithHalo(ctx, SEAMARK_DARK, 1.6);
+    }
+
+    function drawLetterInCircle(ctx, w, h, letter) {
+        ctx.beginPath();
+        ctx.arc(w / 2, h / 2, w * 0.36, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.fill();
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = SEAMARK_MAGENTA;
+        ctx.stroke();
+        ctx.fillStyle = SEAMARK_MAGENTA;
+        ctx.font = 'bold ' + Math.round(w * 0.45) + 'px Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(letter, w / 2, h / 2 + 0.5);
+    }
+
+    // Значок рисуется по имени из seamarkIcon: sm-<вид>[-<форма>][-<цвета>].
+    function addSeamarkIcon(name) {
+        if (map.hasImage(name)) {
+            return;
+        }
+        var parts = name.split('-');
+        var kind = parts[1];
+        var tall = kind === 'buoy' || kind === 'beacon';
+        var w = tall ? 16 : 20;
+        var h = tall ? 22 : 20;
+        var ratio = window.devicePixelRatio || 1;
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.round(w * ratio);
+        canvas.height = Math.round(h * ratio);
+        var ctx = canvas.getContext('2d');
+        ctx.scale(ratio, ratio);
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        if (kind === 'anchor') {
+            drawAnchor(ctx, w, h, SEAMARK_MAGENTA);
+        } else if (kind === 'harbour') {
+            drawAnchor(ctx, w, h, '#1565c0');
+        } else if (kind === 'light') {
+            drawLight(ctx, w, h, parts[2]);
+        } else if (kind === 'buoy') {
+            drawBuoy(ctx, w, h, parts[2], parts[3]);
+        } else if (kind === 'beacon') {
+            drawBeacon(ctx, w, h, parts[2]);
+        } else if (kind === 'wreck') {
+            drawWreck(ctx, w, h);
+        } else if (kind === 'pilot') {
+            drawLetterInCircle(ctx, w, h, 'P');
+        } else if (kind === 'radio') {
+            drawLetterInCircle(ctx, w, h, 'R');
+        } else {
+            drawDanger(ctx, w, h);
+        }
+        map.addImage(name, ctx.getImageData(0, 0, canvas.width, canvas.height), { pixelRatio: ratio });
+    }
+
+    // ---------- Мост команд 1С ----------
+
+    // Ответ на ready и на status: «<идентификатор набора>|<число пакетов>», пустая строка — набора нет.
+    function readyMessage() {
+        return cacheSet ? cacheSet.id + '|' + cacheSet.packages : '';
+    }
+
+    function applyCommand(command) {
+        var op = command && command.op;
+        // До startMap список только запоминается (источников ещё нет), как снимок в updateVessels.
+        if (op === 'setWatchlist') {
+            watchlist = command.watchlist || { version: '', vessels: [] };
+            applySnapshot();
+            return '';
+        }
+        if (op === 'updateVessels') {
+            snapshot = command.snapshot || null;
+            applySnapshot();
+            return '';
+        }
+        if (op === 'addCachePackage') {
+            return addCachePackage(command.package);
+        }
+        if (op === 'startMap') {
+            startMap();
+            return '';
+        }
+        if (op === 'status') {
+            return readyMessage();
+        }
+        throw new Error('Неизвестная команда карты: ' + op);
+    }
+
+    // data-ack выставляется после раскладки пакета: 1С читает его сразу после click()
+    // и следующей командой затирает data-payload.
+    function processBridgeCommand(event) {
+        if (event) {
+            if (event.preventDefault) {
+                event.preventDefault();
+            }
+            if (event.stopPropagation) {
+                event.stopPropagation();
+            }
+        }
+        var sequence = commandBridge.getAttribute('data-seq') || '';
+        if (!sequence || sequence === processBridgeCommand.lastSequence) {
+            return false;
+        }
+        processBridgeCommand.lastSequence = sequence;
+        var payload = commandBridge.getAttribute('data-payload') || '';
+        // Иначе строка пакета в полтора мегабайта жила бы в атрибуте DOM до конца сеанса.
+        commandBridge.setAttribute('data-payload', '');
+        try {
+            var result = applyCommand(JSON.parse(payload));
+            commandBridge.setAttribute('data-result', result == null ? '' : String(result));
+            commandBridge.setAttribute('data-error', '');
+        } catch (commandError) {
+            commandBridge.setAttribute('data-error', commandError.message || String(commandError));
+        }
+        commandBridge.setAttribute('data-ack', sequence);
+        return false;
+    }
+    processBridgeCommand.lastSequence = '';
+
+    // ---------- Карта ----------
+
+    function fallbackMessage() {
+        return cacheSet
+            ? 'Подложка недоступна: показаны только суда'
+            : 'Картографические данные не загружены. Администратор: «Загрузка картографических данных»';
+    }
+
+    function bindMapEvents() {
+        map.on('style.load', function () {
+            var fallback = requestedStyle === EMPTY_STYLE;
+            requestedStyle = null;
+            ensureOwnLayers();
+            if (fallback) {
+                showMessage(fallbackMessage());
+            }
+        });
+
+        // Значки обстановки рисуются по требованию: их имена зависят от данных набора.
+        map.on('styleimagemissing', function (event) {
+            if (event && event.id && event.id.indexOf('sm-') === 0) {
+                addSeamarkIcon(event.id);
+            } else {
+                addVesselIcons();
+            }
+        });
+
+        map.on('error', function (event) {
+            var error = event && event.error;
+            var text = error && error.message ? error.message : 'Ошибка карты';
+            // Стиль не собрался (например, нет спрайта в наборе): встроенный пустой стиль, чтобы показать хотя бы суда.
+            if (requestedStyle && requestedStyle !== EMPTY_STYLE && !event.sourceId) {
+                setStyle(EMPTY_STYLE);
+                sendEvent('error', 'Подложка недоступна: ' + text);
+                return;
+            }
+            var now = Date.now();
+            if (now - lastErrorEventAt >= ERROR_EVENT_INTERVAL_MS) {
+                lastErrorEventAt = now;
+                sendEvent('error', text);
+            }
+        });
+
+        map.on('webglcontextlost', function () {
+            showMessage('Графический контекст потерян. Перезапустите форму.');
+            sendEvent('error', 'Потерян контекст WebGL');
+        });
+
+        var clickableLayers = ['vessel-icons', 'vessel-icons-hull-zoom', 'vessel-hulls-fill'];
+        clickableLayers.forEach(function (layerId) {
+            map.on('click', layerId, function (event) {
+                var feature = event.features && event.features[0];
+                // Значок и корпус могут перекрываться: один клик открывает popup один раз.
+                if (!feature || event.originalEvent.vesselHandled) {
+                    return;
+                }
+                event.originalEvent.vesselHandled = true;
+                openPopup(feature.properties.mmsi);
+            });
+            map.on('mouseenter', layerId, function () {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', layerId, function () {
+                map.getCanvas().style.cursor = '';
+            });
+        });
+
+        var mapElement = document.getElementById('map');
+        if (typeof ResizeObserver === 'function') {
+            new ResizeObserver(function () { map.resize(); }).observe(mapElement);
+        } else {
+            window.addEventListener('resize', function () { map.resize(); });
+        }
+    }
+
+    // Карта создаётся из кеша после переноса всех пакетов; без набора — сразу на пустом стиле с судами.
+    function startMap() {
+        if (map) {
+            return;
+        }
+        showLoading('');
+        seamarkData = buildSeamarkData();
+        var style = cacheSet ? styleFor(ui.basemap) : EMPTY_STYLE;
+        requestedStyle = style;
+        map = new maplibregl.Map({
+            container: 'map',
+            style: style,
+            center: region.center,
+            zoom: region.zoom,
+            minZoom: region.minZoom,
+            maxZoom: region.maxZoom,
+            maxBounds: region.maxBounds,
+            maxPitch: 0,
+            touchPitch: false,
+            attributionControl: false
+        });
+        map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-left');
+        // Мили — как скорости судов в узлах, километры — для привычной оценки расстояний.
+        map.addControl(new maplibregl.ScaleControl({ unit: 'nautical' }), 'bottom-right');
+        map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+        updateAttribution();
+        bindMapEvents();
+        applySnapshot();
+    }
+
+    function sendReady() {
+        sendEvent('ready', readyMessage());
+    }
+
+    // Набор картографии лежит в кеше страницы: адреса harbor://<ключ> обслуживает обработчик из КешКартыJS.
+    harborCache.register(region);
+    rebuildVesselData();
+    buildLegend();
+    updateStaleBanner();
+    bindPanel();
+    renderWatchPanel();
+    // Без набора переключать нечего: обе подложки дали бы пустой стиль.
+    document.getElementById('opt-basemap').disabled = !cacheSet;
+    if (cacheSet) {
+        showLoading(loadingText());
+    }
+
+    // ready — до создания карты: форма по нему начинает переносить пакеты, а карта ждёт их.
+    // Отправка после load: событие поля во время разбора страницы 1С может не получить.
+    commandBridge.addEventListener('click', processBridgeCommand, false);
+    commandBridge.setAttribute('data-ready', 'true');
+    if (document.readyState === 'complete') {
+        setTimeout(sendReady, 0);
+    } else {
+        window.addEventListener('load', function () { setTimeout(sendReady, 0); });
+    }
+}());

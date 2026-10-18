@@ -44,9 +44,19 @@
   <subsystems>Subsystem.ПодходСудов</subsystems>
   <roles>Role.Администратор</roles>
   <roles>Role.Пользователь</roles>
-  <commonModules>CommonModule.ПолучениеДанныхAIS</commonModules>
-  <scheduledJobs>ScheduledJob.ПолучитьСудаAIS</scheduledJobs>
+  <commonModules>CommonModule.КартографическиеДанныеV2</commonModules>
+  <commonModules>CommonModule.КартографическиеДанныеКлиентV2</commonModules>
+  <commonModules>CommonModule.МостКартыКлиентV2</commonModules>
+  <commonModules>CommonModule.ПолучениеДанныхAISV1</commonModules>
+  <commonModules>CommonModule.ПолучениеДанныхAISV2</commonModules>
+  <scheduledJobs>ScheduledJob.ПолучитьСудаAISV1</scheduledJobs>
+  <scheduledJobs>ScheduledJob.ПолучитьСудаAISV2</scheduledJobs>
   <constants>Constant.ТокенOpenWaters</constants>
-  <dataProcessors>DataProcessor.КартаПодходаСудов</dataProcessors>
-  <informationRegisters>InformationRegister.СнимкиAIS</informationRegisters>
+  <catalogs>Catalog.ОтслеживаемыеСудаV2</catalogs>
+  <dataProcessors>DataProcessor.КартаПодходаСудовV1</dataProcessors>
+  <dataProcessors>DataProcessor.КартаПодходаСудовV2</dataProcessors>
+  <informationRegisters>InformationRegister.НаборыКартыV2</informationRegisters>
+  <informationRegisters>InformationRegister.ПакетыКартыV2</informationRegisters>
+  <informationRegisters>InformationRegister.СнимкиAISV1</informationRegisters>
+  <informationRegisters>InformationRegister.СнимкиAISV2</informationRegisters>
 </mdclass:Configuration>

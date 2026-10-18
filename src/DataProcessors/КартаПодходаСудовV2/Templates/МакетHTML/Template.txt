@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<style>/*@@MAPLIBRE_CSS@@*/</style>
+<style>/*@@MAP_CSS@@*/</style>
+<script>
+// Сборщик ошибок стоит первым: ошибка разбора библиотеки убивает только её блок <script>.
+window.__mapErrors = [];
+window.onerror = function (message, source, line, column) {
+    window.__mapErrors.push(String(message) + (line ? ' (строка ' + line + ':' + (column || 0) + ')' : ''));
+    return false;
+};
+</script>
+</head>
+<body>
+<div id="map"></div>
+<div id="stale-banner" class="banner" hidden></div>
+<div id="map-message" class="banner banner-error" hidden></div>
+<div id="map-loading" class="loading" hidden></div>
+<div id="layer-panel" class="panel">
+  <div id="layer-panel-header" class="panel-header" title="Свернуть или развернуть">Слои <span id="layer-panel-arrow">▾</span></div>
+  <div id="layer-panel-body">
+  <label class="panel-row panel-row-select">Подложка
+    <select id="opt-basemap">
+      <option value="positron">Светлая (Positron)</option>
+      <option value="liberty">Подробная (Liberty)</option>
+      <option value="minimal">Морская (минимальная)</option>
+    </select>
+  </label>
+  <label class="panel-row"><input type="checkbox" id="opt-seamark" checked> Морская обстановка</label>
+  <label class="panel-row"><input type="checkbox" id="opt-hulls" checked> Корпуса судов</label>
+  <label class="panel-row"><input type="checkbox" id="opt-labels" checked> Названия судов</label>
+  <label class="panel-row"><input type="checkbox" id="opt-age-fade"> Прозрачность по возрасту позиции</label>
+  <label class="panel-row"><input type="checkbox" id="opt-watched-only"> Только отслеживаемые</label>
+  <label class="panel-row panel-row-select">Скрыть позиции старше
+    <select id="opt-age">
+      <option value="">не скрывать</option>
+      <option value="1440">24 ч</option>
+      <option value="60">1 ч</option>
+    </select>
+  </label>
+  </div>
+</div>
+<div id="legend" class="panel"></div>
+<div id="watch-panel" class="panel" hidden>
+  <div id="watch-title" class="watch-title"></div>
+  <div id="watch-list" class="watch-list"></div>
+</div>
+<a id="map-command-bridge" href="#map-command" data-ready="false" data-seq="" data-ack="" data-payload="" data-error="" data-result="" style="display:none">command</a>
+<a id="map-event-bridge" href="#event" data-message="" style="display:none">event</a>
+<script>/*@@MAPLIBRE_JS@@*/</script>
+<script>/*@@CACHE_JS@@*/</script>
+<script>window.__mapInitialData = /*@@INITIAL_DATA@@*/;</script>
+<script>/*@@MAP_JS@@*/</script>
+</body>
+</html>

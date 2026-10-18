@@ -1,0 +1,252 @@
+html, body, #map {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    position: relative;
+    overflow: hidden;
+    font: 12px/1.35 "Segoe UI", Arial, sans-serif;
+    color: #1f2933;
+    background: #dfe8ef;
+}
+
+#map {
+    width: 100%;
+}
+
+.banner {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 70%;
+    padding: 6px 12px;
+    border-radius: 4px;
+    background: #fff4ce;
+    border: 1px solid #e0b252;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    z-index: 5;
+    text-align: center;
+}
+
+.banner-error {
+    top: 44px;
+    background: #fde2e1;
+    border-color: #d9534f;
+}
+
+.banner[hidden] {
+    display: none;
+}
+
+.panel {
+    position: absolute;
+    z-index: 4;
+    background: rgba(255, 255, 255, 0.94);
+    border-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    padding: 6px 8px;
+}
+
+#layer-panel {
+    top: 10px;
+    right: 10px;
+}
+
+.panel-row {
+    display: block;
+    margin: 3px 0;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+/* Свой вид списков: нативный список V8WebKit со шрифтом панели рисует рамку за пределами строки,
+   и её обрезает соседняя строка (правая граница у «Подложки», верхняя — у «Скрыть позиции старше»). */
+.panel-row-select {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 24px;
+    margin: 4px 0;
+}
+
+.panel-row select {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    height: 22px;
+    margin-left: 6px;
+    padding: 0 20px 0 6px;
+    font: inherit;
+    color: inherit;
+    border: 1px solid #9aa5b1;
+    border-radius: 3px;
+    background: #ffffff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%2352606d'/></svg>") no-repeat right 6px center;
+    cursor: pointer;
+}
+
+.panel-row select:focus {
+    outline: none;
+    border-color: #2186eb;
+}
+
+.panel-header {
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+#layer-panel-arrow {
+    display: inline-block;
+    margin-left: 4px;
+    color: #52606d;
+}
+
+#layer-panel-body {
+    margin-top: 4px;
+}
+
+/* Под кнопками масштаба: внизу строка атрибуции на всю ширину. */
+#legend {
+    left: 10px;
+    top: 110px;
+    max-width: 220px;
+}
+
+.legend-title {
+    font-weight: 600;
+    margin: 2px 0 4px;
+}
+
+.legend-row {
+    display: flex;
+    align-items: center;
+    margin: 2px 0;
+}
+
+.legend-row canvas,
+.legend-swatch {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    flex: none;
+}
+
+.legend-swatch {
+    border-radius: 50%;
+    background: #2e7d32;
+}
+
+.vessel-popup {
+    min-width: 220px;
+}
+
+.vessel-popup-title {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 4px;
+}
+
+.vessel-popup-row {
+    display: flex;
+    gap: 8px;
+    margin: 1px 0;
+}
+
+.vessel-popup-label {
+    color: #616e7c;
+    flex: 0 0 96px;
+}
+
+.vessel-popup-value {
+    flex: 1 1 auto;
+    word-break: break-word;
+}
+
+/* Индикатор переноса набора: карта создаётся после последнего пакета. */
+.loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 10px 18px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    font-size: 14px;
+    z-index: 6;
+}
+
+.loading[hidden] {
+    display: none;
+}
+
+.legend-ring {
+    width: 12px;
+    height: 12px;
+    margin: 0 8px 0 2px;
+    border: 2px solid #00e5ff;
+    border-radius: 50%;
+    flex: none;
+}
+
+/* Внизу слева свободно: справа внизу атрибуция и линейки, слева вверху легенда. */
+#watch-panel {
+    left: 10px;
+    bottom: 10px;
+    width: 270px;
+    max-height: 35%;
+    overflow-y: auto;
+}
+
+#watch-panel[hidden] {
+    display: none;
+}
+
+.watch-title {
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+}
+
+.watch-row {
+    padding: 3px 0;
+    border-top: 1px solid #e4e7eb;
+}
+
+.watch-row-active {
+    cursor: pointer;
+}
+
+.watch-row-active:hover {
+    background: #f0fbfd;
+}
+
+.watch-name {
+    font-weight: 600;
+}
+
+.watch-ids {
+    color: #616e7c;
+}
+
+.watch-status-on-map {
+    color: #2e7d32;
+}
+
+.watch-status-old {
+    color: #b26a00;
+}
+
+.watch-status-missing {
+    color: #7b8794;
+}
+
+.vessel-popup-details {
+    margin-top: 6px;
+    padding: 3px 10px;
+    font: inherit;
+    cursor: pointer;
+}

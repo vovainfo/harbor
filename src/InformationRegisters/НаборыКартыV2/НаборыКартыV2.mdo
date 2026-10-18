@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mdclass:InformationRegister xmlns:mdclass="http://g5.1c.ru/v8/dt/metadata/mdclass" uuid="c4ec0bc8-80aa-4b31-accd-f8990ae14f4c">
+  <producedTypes>
+    <selectionType typeId="f628b493-2ab7-4dae-a3b6-8454c5a83873" valueTypeId="884703f9-daa2-44b2-895a-c9c82932cb78"/>
+    <listType typeId="f0fc52bb-198a-4c42-b02d-8b288dfd7e65" valueTypeId="c344d77c-78f4-4c68-badc-8dec69905ac8"/>
+    <managerType typeId="ad0c19bc-f058-440f-acd3-90e14c225f22" valueTypeId="fb4468ea-32f7-4781-a886-d0ee2801c4e5"/>
+    <recordSetType typeId="4e760124-9524-4046-8e8b-0beb7d39e4dd" valueTypeId="37042520-9e02-4eed-9762-077d5da6d44b"/>
+    <recordKeyType typeId="7df7f434-e54d-49f3-b208-f17ce7e44e31" valueTypeId="0e63349b-63a3-4a0c-a2f6-bace26da5509"/>
+    <recordType typeId="4b9bc208-b3bd-4f12-aeb8-5bd678983e7e" valueTypeId="ba4b2ce6-32f0-4407-ba93-0ac353acdf9c"/>
+    <recordManagerType typeId="b41a3dba-6f75-4bc5-afe6-6f3a3bdd4c10" valueTypeId="f02c33b6-ca63-48a7-b9fe-b3cab26526a8"/>
+  </producedTypes>
+  <name>НаборыКартыV2</name>
+  <synonym>
+    <key>ru</key>
+    <value>Наборы картографических данных (V2)</value>
+  </synonym>
+  <useStandardCommands>true</useStandardCommands>
+  <editType>InDialog</editType>
+  <dataLockControlMode>Managed</dataLockControlMode>
+  <listPresentation>
+    <key>ru</key>
+    <value>Наборы картографических данных (V2)</value>
+  </listPresentation>
+  <resources uuid="2e98c26f-d83c-483e-acd6-27ac2e8fb826">
+    <name>Статус</name>
+    <synonym>
+      <key>ru</key>
+      <value>Статус</value>
+    </synonym>
+    <type>
+      <types>String</types>
+      <stringQualifiers>
+        <length>20</length>
+      </stringQualifiers>
+    </type>
+  </resources>
+  <resources uuid="c20bac24-9349-48a1-9fed-9a0680fb9255">
+    <name>ДатаСоздания</name>
+    <synonym>
+      <key>ru</key>
+      <value>Дата создания (UTC)</value>
+    </synonym>
+    <type>
+      <types>Date</types>
+      <dateQualifiers/>
+    </type>
+  </resources>
+  <resources uuid="d483fb50-12f0-48b8-a93c-f3e27507f152">
+    <name>ДатаАктивации</name>
+    <synonym>
+      <key>ru</key>
+      <value>Дата активации (UTC)</value>
+    </synonym>
+    <type>
+      <types>Date</types>
+      <dateQualifiers/>
+    </type>
+  </resources>
+  <resources uuid="37106b35-bdf8-435c-96f6-fcd3888e73a3">
+    <name>ПараметрыJSON</name>
+    <synonym>
+      <key>ru</key>
+      <value>Параметры JSON</value>
+    </synonym>
+    <type>
+      <types>String</types>
+      <stringQualifiers/>
+    </type>
+  </resources>
+  <resources uuid="54c6615a-73d3-444c-a570-7461836b18d7">
+    <name>МанифестJSON</name>
+    <synonym>
+      <key>ru</key>
+      <value>Манифест JSON</value>
+    </synonym>
+    <type>
+      <types>String</types>
+      <stringQualifiers/>
+    </type>
+  </resources>
+  <resources uuid="7331b2ab-b5e9-4589-a2d5-91179a680ee3">
+    <name>Загрузил</name>
+    <synonym>
+      <key>ru</key>
+      <value>Загрузил</value>
+    </synonym>
+    <type>
+      <types>String</types>
+      <stringQualifiers>
+        <length>100</length>
+      </stringQualifiers>
+    </type>
+  </resources>
+  <dimensions uuid="e9588864-d0ba-47a5-b993-b8b93c288681">
+    <name>Набор</name>
+    <synonym>
+      <key>ru</key>
+      <value>Набор</value>
+    </synonym>
+    <type>
+      <types>UUID</types>
+    </type>
+  </dimensions>
+</mdclass:InformationRegister>

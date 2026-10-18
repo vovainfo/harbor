@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mdclass:CommonModule xmlns:mdclass="http://g5.1c.ru/v8/dt/metadata/mdclass" uuid="ac28b4d4-40ea-432e-8fea-4a3974857419">
+  <name>МостКартыКлиентV2</name>
+  <synonym>
+    <key>ru</key>
+    <value>Мост карты: клиент (V2)</value>
+  </synonym>
+  <clientManagedApplication>true</clientManagedApplication>
+  <clientOrdinaryApplication>true</clientOrdinaryApplication>
+</mdclass:CommonModule>

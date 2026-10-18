@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mdclass:Catalog xmlns:mdclass="http://g5.1c.ru/v8/dt/metadata/mdclass" uuid="c079c6c7-1758-4bc5-8cbc-49ffd0839a38">
+  <producedTypes>
+    <objectType typeId="b7b1683f-043a-4c85-8b56-adcbf66a35a3" valueTypeId="d47145eb-1ea4-4d73-994d-b933b157b971"/>
+    <refType typeId="f2464b7e-8fff-47e9-8707-8819e800c2ed" valueTypeId="badd0069-6d65-436f-92c6-cd6a22e045b7"/>
+    <selectionType typeId="9da6847f-8475-42eb-8480-74202db13562" valueTypeId="9eb0b2da-9299-4c3c-a53e-f69d1ba72f28"/>
+    <listType typeId="0c0f5a70-cb14-4bda-bd1a-ae51ef696371" valueTypeId="93eb3767-62f8-45d7-ba0a-10d54e15dbd0"/>
+    <managerType typeId="a9ab683c-6740-4745-8e48-7487e004042a" valueTypeId="15611c8e-5227-4e72-b88a-be272c3cf799"/>
+  </producedTypes>
+  <name>ОтслеживаемыеСудаV2</name>
+  <synonym>
+    <key>ru</key>
+    <value>Отслеживаемые суда</value>
+  </synonym>
+  <useStandardCommands>true</useStandardCommands>
+  <inputByString>Catalog.ОтслеживаемыеСудаV2.StandardAttribute.Description</inputByString>
+  <fullTextSearchOnInputByString>DontUse</fullTextSearchOnInputByString>
+  <createOnInput>Use</createOnInput>
+  <dataLockControlMode>Managed</dataLockControlMode>
+  <fullTextSearch>Use</fullTextSearch>
+  <objectPresentation>
+    <key>ru</key>
+    <value>Отслеживаемое судно</value>
+  </objectPresentation>
+  <listPresentation>
+    <key>ru</key>
+    <value>Отслеживаемые суда</value>
+  </listPresentation>
+  <levelCount>2</levelCount>
+  <foldersOnTop>true</foldersOnTop>
+  <descriptionLength>100</descriptionLength>
+  <codeType>String</codeType>
+  <codeAllowedLength>Variable</codeAllowedLength>
+  <checkUnique>true</checkUnique>
+  <autonumbering>true</autonumbering>
+  <defaultPresentation>AsDescription</defaultPresentation>
+  <editType>InDialog</editType>
+  <choiceMode>BothWays</choiceMode>
+  <attributes uuid="85bd0605-e176-4ae2-8142-3772450137b7">
+    <name>IMO</name>
+    <synonym>
+      <key>ru</key>
+      <value>IMO</value>
+    </synonym>
+    <type>
+      <types>Number</types>
+      <numberQualifiers>
+        <precision>7</precision>
+        <nonNegative>true</nonNegative>
+      </numberQualifiers>
+    </type>
+  </attributes>
+  <attributes uuid="ea402d5e-aed0-470b-a34a-81982a8fd85b">
+    <name>MMSI</name>
+    <synonym>
+      <key>ru</key>
+      <value>MMSI</value>
+    </synonym>
+    <type>
+      <types>Number</types>
+      <numberQualifiers>
+        <precision>9</precision>
+        <nonNegative>true</nonNegative>
+      </numberQualifiers>
+    </type>
+  </attributes>
+  <attributes uuid="bf883f40-b41c-4514-9f51-380797782ae8">
+    <name>Комментарий</name>
+    <synonym>
+      <key>ru</key>
+      <value>Комментарий</value>
+    </synonym>
+    <type>
+      <types>String</types>
+      <stringQualifiers>
+        <length>500</length>
+      </stringQualifiers>
+    </type>
+  </attributes>
+  <attributes uuid="edc750bd-8a8b-4a82-ab4a-642e53a1c449">
+    <name>Добавил</name>
+    <synonym>
+      <key>ru</key>
+      <value>Добавил</value>
+    </synonym>
+    <type>
+      <types>String</types>
+      <stringQualifiers>
+        <length>100</length>
+      </stringQualifiers>
+    </type>
+  </attributes>
+  <attributes uuid="b06194db-e066-4ebf-ace4-c173ccab6b0d">
+    <name>ДатаДобавления</name>
+    <synonym>
+      <key>ru</key>
+      <value>Дата добавления (UTC)</value>
+    </synonym>
+    <type>
+      <types>Date</types>
+      <dateQualifiers/>
+    </type>
+  </attributes>
+</mdclass:Catalog>
