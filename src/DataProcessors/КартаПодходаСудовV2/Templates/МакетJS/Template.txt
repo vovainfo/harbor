@@ -1441,8 +1441,15 @@
 
         // Значки обстановки рисуются по требованию: их имена зависят от данных набора.
         map.on('styleimagemissing', function (event) {
-            if (event && event.id && event.id.indexOf('sm-') === 0) {
-                addSeamarkIcon(event.id);
+            var id = event && event.id;
+            var spriteIcon = id ? harborCache.spriteImage(id) : null;
+            if (id && id.indexOf('sm-') === 0) {
+                addSeamarkIcon(id);
+            } else if (spriteIcon) {
+                // Значки подложки — из атласа спрайта, который страница декодировала сама.
+                if (!map.hasImage(id)) {
+                    map.addImage(id, spriteIcon.data, spriteIcon.options);
+                }
             } else {
                 addVesselIcons();
             }
@@ -1497,13 +1504,21 @@
     }
 
     // Карта создаётся из кеша после переноса всех пакетов; без набора — сразу на пустом стиле с судами.
+    // Сначала стиль (он же называет спрайт), затем асинхронно атлас спрайта, затем сама карта.
     function startMap() {
-        if (map) {
+        if (map || startMap.pending) {
             return;
         }
+        startMap.pending = true;
+        var style = cacheSet ? styleFor(ui.basemap) : EMPTY_STYLE;
+        harborCache.loadSprite(function () {
+            createMap(style);
+        });
+    }
+
+    function createMap(style) {
         showLoading('');
         seamarkData = buildSeamarkData();
-        var style = cacheSet ? styleFor(ui.basemap) : EMPTY_STYLE;
         requestedStyle = style;
         map = new maplibregl.Map({
             container: 'map',

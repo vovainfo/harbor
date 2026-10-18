@@ -8,6 +8,10 @@
     var VECTOR_SOURCE = 'openmaptiles';
 
     var buffers = {};
+    // base64 картинок спрайта: из него страница декодирует спрайт сама (см. loadSprite).
+    var pngBase64 = {};
+    var spriteName = null;
+    var atlas = null;
     var packages = {};
     var packageCount = 0;
     var region = null;
@@ -47,6 +51,9 @@
         }
         (cachePackage.items || []).forEach(function (item) {
             buffers[item.k] = base64ToBuffer(item.b);
+            if (/\.png$/.test(item.k)) {
+                pngBase64[item.k] = item.b;
+            }
         });
         packages[cachePackage.n] = true;
         packageCount++;
@@ -135,10 +142,62 @@
         if (result.glyphs) {
             result.glyphs = PREFIX + 'glyphs/{fontstack}/{range}.pbf';
         }
+        // Спрайт библиотеке не отдаём: без createImageBitmap MapLibre 1.15 декодирует PNG через
+        // <img src="blob:…">, а 1С на каждый такой адрес спрашивает «открыть локальный файл?».
+        // Значки страница берёт из атласа (loadSprite, spriteImage) по событию styleimagemissing.
         if (result.sprite) {
-            result.sprite = PREFIX + 'sprite/' + lastSegment(result.sprite);
+            spriteName = lastSegment(result.sprite);
+            delete result.sprite;
         }
         return result;
+    }
+
+    function spriteKeys(suffix) {
+        return { index: 'sprite/' + spriteName + suffix + '.json', png: 'sprite/' + spriteName + suffix + '.png' };
+    }
+
+    // Декодирует атлас спрайта из адреса data: (не blob:) один раз за страницу; при devicePixelRatio > 1 — @2x.
+    // callback вызывается всегда, и при отсутствии спрайта в наборе.
+    function loadSprite(callback) {
+        if (atlas || !spriteName) {
+            callback();
+            return;
+        }
+        var keys = spriteKeys((window.devicePixelRatio || 1) > 1 ? '@2x' : '');
+        if (!buffers[keys.index] || !pngBase64[keys.png]) {
+            keys = spriteKeys('');
+        }
+        var index = json(keys.index);
+        if (!index || !pngBase64[keys.png]) {
+            callback();
+            return;
+        }
+        var image = new Image();
+        image.onload = function () {
+            var canvas = document.createElement('canvas');
+            canvas.width = image.width;
+            canvas.height = image.height;
+            var context = canvas.getContext('2d');
+            context.drawImage(image, 0, 0);
+            atlas = { context: context, index: index };
+            callback();
+        };
+        image.onerror = function () {
+            callback();
+        };
+        image.src = 'data:image/png;base64,' + pngBase64[keys.png];
+    }
+
+    // Значок спрайта по имени для map.addImage; null — такого значка в спрайте нет.
+    function spriteImage(id) {
+        var item = atlas && atlas.index[id];
+        if (!item) {
+            return null;
+        }
+        return {
+            data: atlas.context.getImageData(item.x, item.y, item.width, item.height),
+            options: { pixelRatio: item.pixelRatio || 1, sdf: !!item.sdf }
+        };
     }
 
     window.harborCache = {
@@ -153,6 +212,8 @@
         keyCount: function () { return Object.keys(buffers).length; },
         json: json,
         style: style,
+        loadSprite: loadSprite,
+        spriteImage: spriteImage,
         base64ToBuffer: base64ToBuffer,
         stats: function () { return stats; }
     };
